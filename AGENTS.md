@@ -8,3 +8,6 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Keep public customer submissions behind validated TanStack server functions; this limits exposed database permissions.
+- Keep the AI receptionist as one ephemeral conversation with no stored transcript; this follows the visitor privacy choice.
