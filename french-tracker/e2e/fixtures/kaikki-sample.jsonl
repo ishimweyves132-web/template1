@@ -1,0 +1,10 @@
+{"word":"chat","lang_code":"fr","pos":"noun","sounds":[{"ipa":"/ʃa/"}],"senses":[{"glosses":["cat"],"tags":["masculine"],"examples":[{"text":"Le chat dort sur le canapé.","english":"The cat is sleeping on the sofa."}]}]}
+{"word":"château","lang_code":"fr","pos":"noun","sounds":[{"ipa":"/ʃɑ.to/"}],"senses":[{"glosses":["castle"],"tags":["masculine"]}]}
+{"word":"maison","lang_code":"fr","pos":"noun","senses":[{"glosses":["house","home"],"tags":["feminine"],"examples":[{"text":"Nous rentrons à la maison.","english":"We are going home."}]}]}
+{"word":"être","lang_code":"fr","pos":"verb","senses":[{"glosses":["to be"]}]}
+{"word":"œuf","lang_code":"fr","pos":"noun","senses":[{"glosses":["egg"],"tags":["masculine"]}]}
+{"word":"bonjour","lang_code":"fr","pos":"intj","senses":[{"glosses":["hello","good morning"]}]}
+{"word":"livre","lang_code":"fr","pos":"noun","senses":[{"glosses":["book"],"tags":["masculine"]}]}
+{"word":"livre","lang_code":"fr","pos":"noun","senses":[{"glosses":["pound (unit of weight)"],"tags":["feminine"]}]}
+{"word":"école","lang_code":"fr","pos":"noun","senses":[{"glosses":["school"],"tags":["feminine"]}]}
+{"word":"ignored","lang_code":"en","pos":"noun","senses":[{"glosses":["not a French entry"]}]}
