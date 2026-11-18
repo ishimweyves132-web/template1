@@ -1,6 +1,7 @@
 import type { Db } from "./db";
 import { isDateStr } from "./dates";
 import { ACTIVITIES, uid, type Settings } from "./model";
+import { isNative, shareFile } from "./native";
 
 export const APP_ID = "french-mastery-tracker";
 const DATA_STORES = ["sessions", "marks", "vocab", "goals", "challenges"] as const;
@@ -72,7 +73,8 @@ export async function restoreBackup(db: Db, file: BackupFile, mode: "replace" | 
   await db.putMany("marks", f.data.marks.filter((r) => !haveMarks.has(r.key)));
 }
 
-export function downloadJson(name: string, obj: unknown) {
+export async function downloadJson(name: string, obj: unknown) {
+  if (isNative()) { await shareFile(name, JSON.stringify(obj)); return; } // WebView cannot save blob: downloads
   const url = URL.createObjectURL(new Blob([JSON.stringify(obj)], { type: "application/json" }));
   const a = Object.assign(document.createElement("a"), { href: url, download: name });
   document.body.append(a); a.click(); a.remove();

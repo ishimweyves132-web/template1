@@ -3,6 +3,7 @@ import { useApp } from "../store";
 import { Card, Page, Field } from "../ui/kit";
 import { createBackup, downloadJson, restoreBackup, takeSnapshot, validateBackup, type BackupFile, type Snapshot } from "../lib/backup";
 import { todayStr, formatDate } from "../lib/dates";
+import { isNative } from "../lib/native";
 
 export function Data() {
   const { db, settings, updateSettings, notify, reload, sessions, vocab } = useApp();
@@ -16,8 +17,8 @@ export function Data() {
 
   const doExport = async () => {
     const f = await createBackup(db);
-    downloadJson(`french-tracker-backup-${todayStr()}.json`, f);
-    await updateSettings({ lastExportAt: Date.now() }); notify("Backup file saved to your downloads");
+    try { await downloadJson(`french-tracker-backup-${todayStr()}.json`, f); } catch (e) { notify("Could not share the backup file."); return; }
+    await updateSettings({ lastExportAt: Date.now() }); notify(isNative() ? "Choose where to save your backup" : "Backup file saved to your downloads");
   };
   const pick = async (file: File | undefined) => {
     setErr(""); setPending(null); if (!file) return;

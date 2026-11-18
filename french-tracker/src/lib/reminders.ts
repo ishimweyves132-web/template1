@@ -15,3 +15,18 @@ export async function showReminder() {
   else new Notification(REMINDER_TEXT.title, { body: REMINDER_TEXT.body });
   return true;
 }
+
+/**
+ * Upcoming reminder times for the native app: one per day for the next `days` days at the chosen time,
+ * skipping times already past, and skipping today if practice is already logged.
+ */
+export function planReminders(now: Date, time: string, studiedToday: boolean, days = 14): Date[] {
+  const [h = 19, m = 0] = time.split(":").map(Number);
+  const out: Date[] = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i, h, m, 0, 0);
+    if (d <= now || (i === 0 && studiedToday)) continue;
+    out.push(d);
+  }
+  return out;
+}

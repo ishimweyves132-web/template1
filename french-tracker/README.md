@@ -22,8 +22,26 @@ npm run preview    # serve dist/ on :4173
 Host `dist/` on any static host (GitHub Pages, Netlify, Cloudflare Pages, Lovable publish). Open it once on your
 Android phone in Chrome, then menu -> **Install app**. After that it works with airplane mode on. Use HTTPS (or localhost): required for the service worker.
 
+## Android app (APK)
+The same code is wrapped with Capacitor in `android/` (app id `com.frenchmastery.tracker`). In the APK, reminders are **real scheduled Android
+notifications** that work with the app closed (planned 14 days ahead, re-planned whenever you open the app or log practice), and backups are saved through
+Android's share sheet (the web `download` does not work inside a WebView).
+
+Build it on GitHub (no Android SDK needed locally): Actions tab -> **Build Android APK** -> Run workflow -> download the `french-mastery-apk` artifact.
+Or locally with Android Studio / the Android SDK + JDK 21:
+```
+npm ci && npm run build && npx cap sync android && cd android && ./gradlew assembleDebug
+# -> android/app/build/outputs/apk/debug/app-debug.apk
+```
+Install by opening the `.apk` on the phone (allow "install unknown apps" for the app you open it from). This is a debug-signed build, fine for personal use;
+a Play Store release needs your own signing key.
+
+**Status:** the native layer has NOT been run on a device or emulator, and the APK was not built in the authoring sandbox (the Android SDK host was blocked).
+The web code paths are tested; the Android-only paths (scheduled notifications, share-sheet backup, permission prompt) are untested.
+The downloadable dictionary needs the pack host to allow cross-origin requests (`Access-Control-Allow-Origin: *`); the built-in dictionary needs nothing.
+
 ## Tests
 ```
-npm test           # 71 unit/integration tests (logic, IndexedDB, backup, dictionary download over real HTTP)
+npm test           # 75 unit/integration tests (logic, IndexedDB, backup, dictionary download over real HTTP)
 npm run build && npm run e2e   # real Chromium, phone viewport, real service worker + offline + restart + perf
 ```

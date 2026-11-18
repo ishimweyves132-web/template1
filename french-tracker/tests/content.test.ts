@@ -98,3 +98,18 @@ describe("today's boost", () => {
     const b = todaysBoost(ledger([]), history, today); expect(b.reason).toMatch(/first habit/);
   });
 });
+
+import { planReminders } from "../src/lib/reminders";
+describe("native reminder plan", () => {
+  const at = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+  it("before today's time: starts today, 14 consecutive days", () => {
+    const p = planReminders(new Date(2026, 10, 18, 9, 0), "19:00", false);
+    expect(p.length).toBe(14); expect(at(p[0]!)).toBe("2026-11-18 19:00"); expect(at(p[13]!)).toBe("2026-12-1 19:00");
+  });
+  it("after today's time: starts tomorrow", () => expect(at(planReminders(new Date(2026, 10, 18, 20, 0), "19:00", false)[0]!)).toBe("2026-11-19 19:00"));
+  it("already practised today: today is skipped, tomorrow onward kept", () => {
+    const p = planReminders(new Date(2026, 10, 18, 9, 0), "19:00", true);
+    expect(p.length).toBe(13); expect(at(p[0]!)).toBe("2026-11-19 19:00");
+  });
+  it("crosses a month and a year boundary", () => expect(at(planReminders(new Date(2026, 11, 30, 8, 0), "07:30", false, 4)[0]!)).toBe("2026-12-31 7:30"));
+});

@@ -1,0 +1,30 @@
+name: Build Android APK
+# Builds an installable APK of French Mastery Tracker on GitHub's servers (which include the Android SDK).
+# Run it from the Actions tab ("Run workflow"), then download the "french-mastery-apk" artifact.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/french-mastery-tracker-app-jbyezh]
+    paths: ["french-tracker/**", ".github/workflows/android-apk.yml"]
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: french-tracker } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: french-tracker/package-lock.json }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+        working-directory: french-tracker/android
+      - name: Rename
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk french-mastery-tracker.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: french-mastery-apk, path: french-tracker/french-mastery-tracker.apk, if-no-files-found: error }

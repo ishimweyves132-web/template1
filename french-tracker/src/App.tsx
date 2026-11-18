@@ -14,6 +14,7 @@ import { Reminders } from "./views/Reminders";
 import { Playbook } from "./views/Playbook";
 import { evalDay } from "./lib/stats";
 import { reminderDue, showReminder } from "./lib/reminders";
+import { isNative, syncNativeReminders } from "./lib/native";
 
 const TABS = [["today", "Today", "⌂"], ["track", "Track", "＋"], ["focus", "Focus", "◎"], ["progress", "Progress", "▥"], ["more", "More", "☰"]] as const;
 
@@ -29,8 +30,14 @@ export function App() {
 
   // Reminder: checked on open, on return to the app and every minute while open.
   useEffect(() => {
+    const studied = evalDay(ledger, settings.targetHistory, today).total > 0;
+    if (isNative()) { // real scheduled notifications; re-planned whenever records or settings change
+      void syncNativeReminders(settings.reminders, studied).catch(() => {});
+      const again = () => document.visibilityState === "visible" && void syncNativeReminders(settings.reminders, studied).catch(() => {});
+      document.addEventListener("visibilitychange", again);
+      return () => document.removeEventListener("visibilitychange", again);
+    }
     const check = () => {
-      const studied = evalDay(ledger, settings.targetHistory, today).total > 0;
       if (reminderDue(new Date(), settings.reminders, studied, today)) {
         void showReminder().then(async (shown) => { if (shown) await updateSettings({ reminders: { ...settings.reminders, lastShown: today } }); });
       }

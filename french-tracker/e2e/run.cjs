@@ -358,7 +358,7 @@ const has = (page, s, sel = "main") => page.waitForFunction(([q, x]) => document
   await test("reminder: enabled reminder shows a neutral banner only when nothing is logged", async () => {
     const p2 = await chromium.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(), "fmt-p2-")), mobile);
     const pg = p2.pages()[0] || await p2.newPage(); await go(pg, "#/more/reminders");
-    await pg.getByLabel("Remind me after").fill("00:00"); await pg.locator("input[type=checkbox]").click(); await pg.waitForFunction(() => document.querySelector("input[type=checkbox]").checked);
+    await pg.getByLabel("Remind me at").fill("00:00"); await pg.locator("input[type=checkbox]").click(); await pg.waitForFunction(() => document.querySelector("input[type=checkbox]").checked);
     await nav(pg, "#/today"); ok((await pg.locator("main").innerText()).includes("Gentle reminder"), "banner shown");
     ok(!/missed|failed|streak.*lost|don.t break/i.test(await pg.locator("main").innerText()), "no guilt wording");
     await pg.close(); await p2.close();
