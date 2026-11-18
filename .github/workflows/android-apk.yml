@@ -16,7 +16,7 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: french-tracker/package-lock.json }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 21 }
-      - name: Android SDK (preinstalled on the runner): accept licences, install what the project needs
+      - name: Android SDK - accept licences and install what the project needs
         working-directory: .
         run: |
           SDKM="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
