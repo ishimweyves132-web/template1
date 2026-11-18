@@ -36,12 +36,14 @@ npm ci && npm run build && npx cap sync android && cd android && ./gradlew assem
 Install by opening the `.apk` on the phone (allow "install unknown apps" for the app you open it from). This is a debug-signed build, fine for personal use;
 a Play Store release needs your own signing key.
 
+**Dictionary:** the APK build also bundles a real 98,303-entry Wiktionary French-to-English dictionary (see `docs/DICTIONARY.md`), installed offline on first launch.
+
 **Status:** the native layer has NOT been run on a device or emulator, and the APK was not built in the authoring sandbox (the Android SDK host was blocked).
 The web code paths are tested; the Android-only paths (scheduled notifications, share-sheet backup, permission prompt) are untested.
 The downloadable dictionary needs the pack host to allow cross-origin requests (`Access-Control-Allow-Origin: *`); the built-in dictionary needs nothing.
 
 ## Tests
 ```
-npm test           # 75 unit/integration tests (logic, IndexedDB, backup, dictionary download over real HTTP)
+npm test           # 80 unit/integration tests (logic, IndexedDB, backup, dictionary download over real HTTP)
 npm run build && npm run e2e   # real Chromium, phone viewport, real service worker + offline + restart + perf
 ```

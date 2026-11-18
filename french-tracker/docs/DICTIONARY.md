@@ -3,7 +3,14 @@
 ## What ships
 **Built in:** a 259-word starter dictionary (`src/data/words.ts`) and a 128-phrase phrasebook (`src/data/phrases.ts`). Both were written for this app (no third-party dictionary text), so they are freely redistributable with it. They are a curated high-frequency starter set, not a complete dictionary: English meanings only (no French definitions), no audio. Search is accent-insensitive and also finds words by English meaning. When a downloaded pack is installed it takes precedence for any headword it contains.
 
-**Not included:** any third-party dictionary data. The app contains the downloader, verifier, installer
+**Android APK: full dictionary included.** The APK build (`.github/workflows/android-apk.yml`) downloads Wiktionary's French data from kaikki.org on GitHub's servers,
+converts it with `tools/build-pack.mjs`, checks it with `tools/verify-pack.mjs` (about 20 well-known words must exist with the right gender and meaning, or the build fails) and bundles
+the result. Measured in the real build: 98,303 entries (92,845 distinct words; 51k nouns, 19k adjectives, 11k verbs), 3.5 MB packed; 100% of nouns have a gender, 77% have IPA,
+11% have example sentences. Inflected forms ("chats") and alternative spellings are left out; look up the base word. Meanings are English only (French to English); French definitions would need the French-edition extract.
+On first launch the app installs it into local storage in the background (one time, roughly 10 to 30 seconds on a slow phone, shown with a progress bar), verified by size and SHA-256.
+Licence: Wiktionary is CC BY-SA 4.0 and GFDL; attribution is shown in the app and in `NOTICE.md`. The dictionary data, not the app code, carries that licence.
+
+**Not committed:** the generated pack is never stored in the repository (`public/dict/` is git-ignored); only the build recipe is. The app contains the downloader, verifier, installer
 and search. You publish a *pack* (a static file plus a tiny `manifest.json`) anywhere you control, e.g. next to the app
 in `dist/dict/`, and the app downloads it on demand.
 
