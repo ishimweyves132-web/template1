@@ -25,6 +25,17 @@ jobs:
           "$SDKM" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
       - run: npm ci
       - run: npm test
+      - name: Download Wiktionary French data (kaikki.org) and build the dictionary pack
+        # The downloaded file is treated as data: it lives in its own directory and is only passed as an argument.
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/kaikki public/dict
+          curl -fL --retry 5 --retry-delay 5 -o /tmp/kaikki/french.jsonl https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl
+          ls -la /tmp/kaikki
+          head -c 700 /tmp/kaikki/french.jsonl; echo
+          node tools/build-pack.mjs --in /tmp/kaikki/french.jsonl --lang en --out public/dict --version "$(date -u +%Y-%m)" \
+            --source "Wiktionary (English edition) via kaikki.org / Wiktextract" --license "CC BY-SA 4.0 and GFDL" --min-entries 20000 --max-mb 60
+          ls -la public/dict && cat public/dict/manifest.json
       - run: npm run build
       - run: npx cap sync android
       - name: Build debug APK

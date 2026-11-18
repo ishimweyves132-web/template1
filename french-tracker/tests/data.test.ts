@@ -4,7 +4,7 @@ import { gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { Db } from "../src/lib/db";
 import { createBackup, restoreBackup, takeSnapshot, validateBackup } from "../src/lib/backup";
-import { DictError, downloadPack, installPack, normalize, removeDictionary, searchDict, type Manifest } from "../src/lib/dict";
+import { DictError, downloadPack, installBundled, installPack, normalize, removeDictionary, searchDict, type Manifest } from "../src/lib/dict";
 import { defaultSettings, uid, type VocabEntry } from "../src/lib/model";
 import { convertEntry } from "../tools/build-pack.mjs";
 import { s } from "./helpers";
@@ -197,6 +197,19 @@ describe("dictionary", () => {
       await expect(downloadPack(db, `${base}/enc.json`, () => {})).rejects.toThrow(/compresses the file in transit/);
       expect(await db.count("dict")).toBe(0);
     });
+    it("installs a pack bundled inside the app with plain GETs, verifies it, and skips when already installed", async () => {
+      const db = await open();
+      const meta = await installBundled(db, `${base}/manifest.json`);
+      expect(meta).toMatchObject({ installed: true, count: 5 });
+      expect((await searchDict(db, "chateau"))[0]!.w).toBe("château");
+      expect(await installBundled(db, `${base}/manifest.json`)).toBeNull();        // same version -> nothing to do
+      expect(await installBundled(await open(), `${base}/absent.json`)).toBeNull(); // no bundled pack -> silently nothing
+    });
+    it("rejects a corrupted bundled pack and leaves no half-installed dictionary", async () => {
+      const db = await open(); corrupt = true;
+      await expect(installBundled(db, `${base}/manifest.json`)).rejects.toThrow(/checksum/);
+      corrupt = false; expect(await db.count("dict")).toBe(0);
+    });
     it("shows a clear error when no pack is published or the server is unreachable", async () => {
       const db = await open();
       await expect(downloadPack(db, `${base}/nope.json`, () => {})).rejects.toThrow(/No dictionary pack is published/);
@@ -204,6 +217,12 @@ describe("dictionary", () => {
     });
   });
 
+  it("pack builder skips inflected forms, alternative spellings and empty entries", () => {
+    expect(convertEntry({ word: "chats", lang_code: "fr", senses: [{ glosses: ["plural of chat"], form_of: [{ word: "chat" }], tags: ["form-of", "plural"] }] }, "en")).toBeNull();
+    expect(convertEntry({ word: "chatt", lang_code: "fr", senses: [{ glosses: ["misspelling of chat"], tags: ["misspelling"] }] }, "en")).toBeNull();
+    const mixed = convertEntry({ word: "avocat", lang_code: "fr", pos: "noun", senses: [{ glosses: ["lawyer"], tags: ["masculine"] }, { glosses: ["old form"], tags: ["obsolete"] }] }, "en");
+    expect(mixed!.d).toEqual([{ t: "lawyer", l: "en" }]);
+  });
   it("pack builder converts Kaikki-shaped entries (gender, IPA, examples)", () => {
     const e = convertEntry({ word: "chat", lang_code: "fr", pos: "noun", sounds: [{ ipa: "/ʃa/" }],
       senses: [{ glosses: ["cat"], tags: ["masculine"], examples: [{ text: "Le chat dort.", english: "The cat sleeps." }] }] }, "en");

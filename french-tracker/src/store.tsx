@@ -6,6 +6,8 @@ import { markKey, uid, type Activity, type Challenge, type Goal, type Mark, type
 import { goalProgress } from "./lib/goals";
 import { buildLedger, type Ledger } from "./lib/stats";
 import { newChallenge } from "./lib/challenge";
+import { installBundled, type DictProgress } from "./lib/dict";
+import { isNative } from "./lib/native";
 
 export type NewSession = Omit<Session, "id" | "createdAt" | "source"> & { source?: Session["source"] };
 
@@ -13,6 +15,7 @@ interface Ctx {
   db: Db; today: DateStr; ledger: Ledger;
   sessions: Session[]; marks: Mark[]; vocab: VocabEntry[]; goals: Goal[]; challenges: Challenge[]; settings: Settings;
   toast: string; notify: (m: string) => void;
+  dictInstall: DictProgress | null;
   saveSession: (s: NewSession & { id?: string }) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   toggleMark: (date: DateStr, a: Activity) => Promise<void>;
@@ -44,6 +47,7 @@ export function Provider({ db, children }: { db: Db; children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [today, setToday] = useState(todayStr());
   const [toast, setToast] = useState("");
+  const [dictInstall, setDictInstall] = useState<DictProgress | null>(null);
   const settingsRef = useRef(settings); settingsRef.current = settings;
   const tt = useRef<number | undefined>(undefined);
 
@@ -88,10 +92,22 @@ export function Provider({ db, children }: { db: Db; children: ReactNode }) {
     }
   }, [loaded, goals, sessions, vocab, today, db, notify]);
 
+  // Android app: the full dictionary ships inside the APK. Install it once, in the background, with checksum verification.
+  // Skipped on the web (there the dictionary is an optional download). After a failure, retry no sooner than 24 h later.
+  useEffect(() => {
+    if (!loaded || !isNative()) return;
+    let failedAt = 0; try { failedAt = Number(localStorage.getItem("fmt-bundled-fail") ?? 0); } catch { /* storage unavailable */ }
+    if (Date.now() - failedAt < 86_400_000) return;
+    void installBundled(db, "./dict/manifest.json", setDictInstall)
+      .then(async (meta) => { if (meta) { await reload(); notify(`Dictionary ready: ${meta.count.toLocaleString()} entries`); } })
+      .catch((e: Error) => { try { localStorage.setItem("fmt-bundled-fail", String(Date.now())); } catch { /* ignore */ } notify(`Bundled dictionary could not be installed: ${e.message}`); })
+      .finally(() => setDictInstall(null));
+  }, [loaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const ledger = useMemo(() => buildLedger(sessions, marks), [sessions, marks]);
 
   const api: Ctx = {
-    db, today, ledger, sessions, marks, vocab, goals, challenges, settings, toast, notify, reload,
+    db, today, ledger, sessions, marks, vocab, goals, challenges, settings, toast, notify, reload, dictInstall,
     async saveSession(s) {
       const rec: Session = { source: "manual", ...s, id: s.id ?? uid(), createdAt: s.id ? sessions.find((x) => x.id === s.id)?.createdAt ?? Date.now() : Date.now() };
       await guard(() => db.put("sessions", rec));

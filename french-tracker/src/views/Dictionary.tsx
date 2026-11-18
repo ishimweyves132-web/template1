@@ -10,22 +10,30 @@ const POS: Record<string, string> = { det: "determiner", noun: "noun", verb: "ve
 const GENDER: Record<string, string> = { m: "masculine", f: "feminine", mf: "masculine or feminine" };
 
 export function Dictionary() {
-  const { settings, updateSettings, db, notify } = useApp();
+  const { settings, updateSettings, db, notify, dictInstall } = useApp();
   const meta = settings.dict;
   const [tab, setTab] = useState<"words" | "phrases">("words");
   return (
     <Page title="Dictionary" back="#/more">
+      {dictInstall && (
+        <Card title="Setting up the full dictionary">
+          <p className="muted">One-time, offline, about a minute. You can keep using the app; the built-in words already work.</p>
+          <Meter value={dictInstall.done} max={dictInstall.total || 1} />
+          <small className="sub">{dictInstall.phase === "verify" ? "Verifying file" : `Installing ${dictInstall.done.toLocaleString()} of ${dictInstall.total.toLocaleString()} entries`}</small>
+        </Card>
+      )}
       <Segmented label="Dictionary sections" value={tab} onChange={setTab} options={[{ v: "words", t: "Words" }, { v: "phrases", t: "Phrasebook" }]} />
       {tab === "phrases" ? <Phrasebook /> : (
         <>
           <Search />
           <Install installed={!!meta?.installed} />
           {meta?.installed && (
-            <Card title="Downloaded dictionary">
+            <Card title="Full dictionary">
               <p>{meta.count.toLocaleString()} entries · {mb(meta.size)} download · version {meta.version}</p>
               <p className="small">Source: {meta.source}<br />Licence: {meta.license}</p>
               <p className="note">Works fully offline. No audio pronunciation is included.</p>
-              <button className="btn danger" onClick={async () => { if (confirm("Remove the downloaded dictionary from this device? Your saved vocabulary and the built-in words are kept.")) { await removeDictionary(db); await updateSettings({ dict: null }); notify("Dictionary removed"); } }}>Remove downloaded dictionary</button>
+              {/CC BY-SA/.test(meta.license) && <p className="small muted">Entries are by Wiktionary contributors (CC BY-SA 4.0 and GFDL), extracted by kaikki.org with Wiktextract. Shared under the same licences.</p>}
+              <button className="btn danger" onClick={async () => { if (confirm("Remove the downloaded dictionary from this device? Your saved vocabulary and the built-in words are kept.")) { await removeDictionary(db); await updateSettings({ dict: null }); notify("Dictionary removed"); } }}>Remove full dictionary</button>
             </Card>
           )}
         </>

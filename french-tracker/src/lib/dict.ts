@@ -161,3 +161,26 @@ export async function searchDict(db: Db, query: string, limit = 25): Promise<Dic
   const prefix = await get(IDBKeyRange.bound(q, q + "￿"), limit + exact.length);
   return [...exact, ...prefix.filter((e) => e.k !== q)].slice(0, limit);
 }
+
+/**
+ * Installs a dictionary pack that ships INSIDE the app (e.g. the Android APK), with no network.
+ * Uses plain GETs (no HEAD/Range, which app asset servers may not support) and the same size + SHA-256 checks as a download.
+ * Returns null when the app has no bundled pack, or the same version is already installed.
+ */
+export async function installBundled(db: Db, manifestUrl: string, onProgress: (p: DictProgress) => void = () => {}): Promise<DictMeta | null> {
+  let res: Response;
+  try { res = await fetch(manifestUrl, { cache: "no-store" }); } catch { return null; }
+  if (!res.ok) return null;
+  let manifest: Manifest;
+  try { manifest = await res.json(); } catch { return null; }
+  if (!manifest.file || !manifest.sha256 || !Number.isFinite(manifest.size)) return null;
+  const cur = (await db.loadSettings()).dict;
+  if (cur?.installed && cur.version === manifest.version && cur.count === manifest.count) return null;
+  const fileUrl = new URL(manifest.file, new URL(manifestUrl, typeof location !== "undefined" ? location.href : "http://localhost/")).href;
+  const fr = await fetch(fileUrl, { cache: "no-store" });
+  if (!fr.ok) throw new DictError(`Bundled dictionary file is missing (HTTP ${fr.status}).`);
+  const blob = await fr.blob();
+  onProgress({ phase: "verify", done: 0, total: 1 });
+  if (blob.size !== manifest.size || (await sha256(blob)) !== manifest.sha256) throw new DictError("The bundled dictionary failed verification (checksum mismatch).");
+  return installPack(db, blob, manifest, manifestUrl, onProgress);
+}

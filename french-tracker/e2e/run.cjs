@@ -289,7 +289,7 @@ const has = (page, s, sel = "main") => page.waitForFunction(([q, x]) => document
     ok((await text(page)).includes("Size confirmed by the server"), "confirmed by server");
     eq(await page.locator("button", { hasText: /^Download/ }).count(), 1);
     await page.locator("button", { hasText: /^Download/ }).click();
-    await page.waitForSelector("text=Downloaded dictionary", { timeout: 15000 });
+    await page.waitForSelector("text=Full dictionary", { timeout: 15000 });
     ok((await text(page)).includes("9 entries"), "9 French entries (non-French ignored): " + (await text(page)).slice(0, 300));
   });
 
@@ -375,7 +375,7 @@ const has = (page, s, sel = "main") => page.waitForFunction(([q, x]) => document
     const norm = (s) => s.replace(/\s+/g, " ");
     eq(norm(after), norm(before), "dashboard identical after restart");
     await nav(page, "#/more/vocab"); ok((await text(page)).includes("J'ai du mal à comprendre"), "vocab persisted");
-    await nav(page, "#/more/dictionary"); ok((await text(page)).includes("Downloaded dictionary"), "dictionary persisted");
+    await nav(page, "#/more/dictionary"); ok((await text(page)).includes("Full dictionary"), "dictionary persisted");
     await nav(page, "#/more/challenge"); ok((await text(page)).includes("Resume at day"), "challenge persisted");
   });
 

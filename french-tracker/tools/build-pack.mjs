@@ -20,7 +20,10 @@ const GENDER_TAGS = { masculine: "m", feminine: "f" };
 
 export function convertEntry(obj, lang) {
   if (!obj || typeof obj.word !== "string" || (obj.lang_code && obj.lang_code !== "fr")) return null;
-  const senses = (obj.senses ?? []).filter((s) => Array.isArray(s.glosses) && s.glosses.length);
+  // Keep real meanings only: drop inflected forms ("chats" = plural of "chat"), alternative spellings and misspellings,
+  // which make up a large share of Wiktionary entries and are better found via their base word.
+  const SKIP_TAGS = new Set(["form-of", "alt-of", "misspelling", "alternative", "abbreviation", "initialism", "obsolete"]);
+  const senses = (obj.senses ?? []).filter((s) => Array.isArray(s.glosses) && s.glosses.length && !s.form_of && !s.alt_of && !(s.tags ?? []).some((x) => SKIP_TAGS.has(x)));
   if (!senses.length) return null;
   const tags = new Set([...(obj.tags ?? []), ...senses.flatMap((s) => s.tags ?? [])]);
   const found = [...tags].filter((t) => GENDER_TAGS[t]).map((t) => GENDER_TAGS[t]);
@@ -65,5 +68,7 @@ async function main() {
   const manifest = { version: a.version ?? new Date().toISOString().slice(0, 10), file, size, sha256: hash.digest("hex"), count, license: a.license, source: a.source, languages: ["fr", a.lang] };
   writeFileSync(`${a.out}/manifest.json`, JSON.stringify(manifest, null, 2));
   console.log(`${count} entries, ${(size / 1e6).toFixed(2)} MB -> ${a.out}/manifest.json`);
+  if (a["max-mb"] && size / 1e6 > Number(a["max-mb"])) { console.error(`Pack is ${(size / 1e6).toFixed(1)} MB, over the --max-mb ${a["max-mb"]} budget`); process.exit(3); }
+  if (a["min-entries"] && count < Number(a["min-entries"])) { console.error(`Only ${count} entries, expected at least ${a["min-entries"]}; the input is probably not what was expected`); process.exit(4); }
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();
