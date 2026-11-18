@@ -59,7 +59,7 @@ export function Data() {
         <p className="muted">Taken automatically every week and before any import or reset. The last 5 are kept inside the app.</p>
         <button className="btn" onClick={async () => { await takeSnapshot(db, "manual"); await loadSnaps(); notify("Safety copy created"); }}>Create one now</button>
         <ul className="rows col">{snaps.map((s) => (
-          <li key={s.id}><div className="sess"><span className="grow">{new Date(s.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}<small className="block muted">{s.reason} · {s.backup.data.sessions.length} sessions</small></span>
+          <li key={s.id}><div className="sess"><span className="grow">{new Date(s.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}<small className="sub">{s.reason} · {s.backup.data.sessions.length} sessions</small></span>
             <button className="link" onClick={async () => { if (confirm("Restore this safety copy? Current data is saved as another safety copy first.")) { await restoreBackup(db, s.backup, "replace", "before restoring safety copy"); await reload(); await loadSnaps(); notify("Restored"); } }}>Restore</button></div></li>))}</ul>
       </Card>
       <Card title="Erase everything">

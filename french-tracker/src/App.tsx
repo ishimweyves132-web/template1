@@ -11,6 +11,7 @@ import { Vocab } from "./views/Vocab";
 import { Dictionary } from "./views/Dictionary";
 import { Data } from "./views/Data";
 import { Reminders } from "./views/Reminders";
+import { Playbook } from "./views/Playbook";
 import { evalDay } from "./lib/stats";
 import { reminderDue, showReminder } from "./lib/reminders";
 
@@ -42,7 +43,7 @@ export function App() {
   if (tab === "track") body = <Track />;
   else if (tab === "focus") body = <Focus />;
   else if (tab === "progress") body = <Progress {...(sub ? { sub } : {})} />;
-  else if (tab === "more") body = sub === "challenge" ? <Challenge /> : sub === "goals" ? <Goals /> : sub === "vocab" ? <Vocab /> : sub === "dictionary" ? <Dictionary /> : sub === "data" ? <Data /> : sub === "reminders" ? <Reminders /> : <More />;
+  else if (tab === "more") body = sub === "challenge" ? <Challenge /> : sub === "goals" ? <Goals /> : sub === "vocab" ? <Vocab /> : sub === "dictionary" ? <Dictionary /> : sub === "data" ? <Data /> : sub === "reminders" ? <Reminders /> : sub === "playbook" ? <Playbook /> : <More />;
   else body = <Dashboard />;
 
   return (

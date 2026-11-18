@@ -70,10 +70,9 @@ function Stats() {
           {ACTIVITIES.map((a) => {
             const s = d30.byActivity[a]; const avg = d30.days ? s.achieved / d30.days : 0; const tg = d30.days ? s.target / d30.days : 0;
             return (
-              <li key={a}><ActivityDot a={a} /><span className="grow">{ACTIVITY_LABEL[a]}</span>
-                <span className="muted">{avg.toFixed(1)} {tg > 0 ? `/ ${tg.toFixed(0)}` : ""} min</span>
-                {tg > 0 && <span className="muted">· {s.daysHit}/{d30.days} days met</span>}
-                <div className="full"><Meter value={avg} max={tg || Math.max(avg, 1)} tone={tg > 0 && avg >= tg ? "done" : "partial"} /></div></li>
+              <li key={a}><ActivityDot a={a} /><span className="grow">{ACTIVITY_LABEL[a]}<small className="sub">{tg > 0 ? `target met on ${s.daysHit} of ${d30.days} days` : "optional, no target"}</small></span>
+                <b>{avg.toFixed(1)}<span className="muted"> {tg > 0 ? `/ ${tg.toFixed(0)}` : ""} min</span></b>
+                {tg > 0 && <div className="full"><Meter value={avg} max={tg} tone={avg >= tg ? "done" : "partial"} /></div>}</li>
             );
           })}
         </ul>

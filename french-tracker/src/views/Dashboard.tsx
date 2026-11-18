@@ -6,6 +6,8 @@ import { evalDay, overall, streaks, summarize } from "../lib/stats";
 import { challengeStatus } from "../lib/challenge";
 import { nextMilestone } from "../lib/goals";
 import { reminderDue } from "../lib/reminders";
+import { todaysBoost } from "../lib/boost";
+import { dueList } from "../lib/review";
 
 export function Dashboard() {
   const { ledger, settings, today, sessions, vocab, goals, challenges } = useApp();
@@ -36,10 +38,12 @@ export function Dashboard() {
   else headline = "Nothing logged yet today.";
   if (ledger.first && prev.total > 0 && elapsed >= 1) {
     const ch = Math.round(((week.total - prev.total) / prev.total) * 100);
-    const t = `This week so far: ${formatMinutes(week.total)}, ${ch === 0 ? "the same as" : `${Math.abs(ch)}% ${ch > 0 ? "more than" : "less than"}`} the same days last week.`;
+    const t = `This week so far: ${formatMinutes(week.total)}, compared with ${formatMinutes(prev.total)} on the same days last week.`;
     detail = detail ? `${detail} ${t}` : t;
     if (ch >= 0 && tone === "calm") tone = "good"; else if (ch <= -25 && tone === "calm") tone = "warn";
   }
+  const boost = todaysBoost(ledger, hist, today);
+  const due = dueList(vocab, today);
   const rem = reminderDue(new Date(), settings.reminders, day.total > 0, today);
 
   return (
@@ -72,11 +76,11 @@ export function Dashboard() {
         )}
       </Card>
 
-      <Card title="Streak">
-        <div className="two">
-          <div className="stat"><b>{st.current}</b><span>current streak{st.current === 1 ? "" : "s"} (days)</span></div>
-          <div className="stat"><b>{st.longest}</b><span>longest streak (days)</span></div>
-        </div>
+      <Card title="Today's boost" action={<a className="btn small" href="#/more/playbook">Fast French</a>}>
+        <p className="big">{boost.tip.title}</p>
+        <p className="muted">{boost.reason}</p>
+        <p className="small">{boost.tip.hook}</p>
+        {due.length > 0 && <a className="linkrow" href="#/more/vocab"><span>{due.length} saved word{due.length === 1 ? "" : "s"} due for review</span><span>›</span></a>}
       </Card>
 
       <Card title="This week" action={<span className="muted">{formatMinutes(week.total)} · {week.daysStudied} day{week.daysStudied === 1 ? "" : "s"}</span>}>
@@ -87,6 +91,8 @@ export function Dashboard() {
       <Card title="Overall progress">
         {tot.sessions === 0 ? <Empty>No sessions yet. Everything here is calculated from what you record.</Empty> : (
           <div className="three">
+            <div className="stat"><b>{st.current}</b><span>day streak</span></div>
+            <div className="stat"><b>{st.longest}</b><span>longest streak</span></div>
             <div className="stat"><b>{hours(tot.total)}</b><span>total hours</span></div>
             <div className="stat"><b>{tot.sessions}</b><span>sessions</span></div>
             <div className="stat"><b>{tot.days}</b><span>days studied</span></div>

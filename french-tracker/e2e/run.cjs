@@ -234,6 +234,51 @@ const has = (page, s, sel = "main") => page.waitForFunction(([q, x]) => document
     await page.keyboard.press("Escape");
   });
 
+  await test("built-in dictionary: works offline with NOTHING downloaded (French, accent-free, and by English meaning)", async () => {
+    await ctx.setOffline(true);
+    try {
+      await nav(page, "#/more/dictionary");
+      ok((await text(page)).includes("259 built-in words"), "count shown");
+      await page.getByLabel("Search the dictionary").fill("fatig"); await has(page, "tired");
+      ok((await text(page)).includes("adjective"), "grammar info");
+      await page.getByLabel("Search the dictionary").fill("ecole"); await has(page, "school"); ok((await text(page)).includes("feminine"), "gender shown");
+      await page.getByLabel("Search the dictionary").fill("kitchen"); await has(page, "cuisine"); ok((await text(page)).includes("Found by English meaning"), "meaning lookup");
+      await page.getByLabel("Search the dictionary").fill("fatigue"); await has(page, "fatigué");
+      await page.getByRole("button", { name: "＋ Save" }).first().click(); await page.waitForTimeout(200);
+      await nav(page, "#/more/vocab"); await page.getByRole("tab", { name: "All" }).click();
+      ok((await text(page)).includes("fatigué") && (await text(page)).includes("tired"), "saved from built-in dictionary");
+    } finally { await ctx.setOffline(false); }
+  });
+
+  await test("phrasebook: browse by category, search, save a phrase", async () => {
+    await nav(page, "#/more/dictionary");
+    await page.getByRole("tab", { name: "Phrasebook" }).click();
+    ok(/12\d phrases/.test(await text(page)), "phrase count");
+    await page.getByRole("button", { name: "Café & restaurant" }).click(); await has(page, "L'addition, s'il vous plaît.");
+    await page.getByLabel("Search phrases").fill("allergic"); await has(page, "Je suis allergique aux noix.");
+    eq(await page.locator(".phrase").count(), 1);
+    await page.getByRole("button", { name: "＋ Save" }).click(); await has(page, "Saved");
+    await nav(page, "#/more/vocab"); await page.getByRole("tab", { name: "All" }).click(); await has(page, "Je suis allergique aux noix.");
+  });
+
+  await test("spaced review: a word added 5 days ago is due; reviewing it removes it from Due", async () => {
+    await page.evaluate(() => new Promise((res) => { const r = indexedDB.open("french-mastery-tracker"); r.onsuccess = () => { const db = r.result; const tx = db.transaction("vocab", "readwrite");
+      const d = new Date(); d.setDate(d.getDate() - 5); const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      tx.objectStore("vocab").put({ id: "due1", fr: "tout à l'heure", en: "in a little while", example: "", notes: "", addedAt: iso, status: "learning", reviews: [], source: "manual" }); tx.oncomplete = () => { db.close(); res(); }; }; }));
+    await page.reload(); await nav(page, "#/today"); await has(page, "saved word due for review");
+    await nav(page, "#/more/vocab"); await has(page, "Due (1)"); await has(page, "tout à l'heure");
+    await page.getByRole("button", { name: "I reviewed this" }).click(); await has(page, "Due (0)");
+    await has(page, "Nothing is due for review right now");
+  });
+
+  await test("Fast French playbook + today's boost", async () => {
+    await nav(page, "#/today"); ok((await text(page)).includes("Today's boost"), "boost on dashboard");
+    await nav(page, "#/more/playbook");
+    const t = await text(page); ok(t.includes("There is no secret shortcut"), "honest framing"); ok(t.includes("Shadow native speakers") && t.includes("Never miss twice"), "tips");
+    await page.getByRole("button", { name: /Shadow native speakers/ }).click(); await has(page, "Do this now (10 min)");
+    await page.screenshot({ path: path.join(out, "08-playbook.png"), fullPage: true });
+  });
+
   await test("dictionary: shows real server-confirmed size BEFORE downloading, downloads, verifies, installs", async () => {
     await nav(page, "#/more/dictionary");
     await page.getByRole("button", { name: /Check download size/ }).click();
@@ -244,7 +289,7 @@ const has = (page, s, sel = "main") => page.waitForFunction(([q, x]) => document
     ok((await text(page)).includes("Size confirmed by the server"), "confirmed by server");
     eq(await page.locator("button", { hasText: /^Download/ }).count(), 1);
     await page.locator("button", { hasText: /^Download/ }).click();
-    await page.waitForSelector("text=Installed dictionary", { timeout: 15000 });
+    await page.waitForSelector("text=Downloaded dictionary", { timeout: 15000 });
     ok((await text(page)).includes("9 entries"), "9 French entries (non-French ignored): " + (await text(page)).slice(0, 300));
   });
 
@@ -330,12 +375,12 @@ const has = (page, s, sel = "main") => page.waitForFunction(([q, x]) => document
     const norm = (s) => s.replace(/\s+/g, " ");
     eq(norm(after), norm(before), "dashboard identical after restart");
     await nav(page, "#/more/vocab"); ok((await text(page)).includes("J'ai du mal à comprendre"), "vocab persisted");
-    await nav(page, "#/more/dictionary"); ok((await text(page)).includes("Installed dictionary"), "dictionary persisted");
+    await nav(page, "#/more/dictionary"); ok((await text(page)).includes("Downloaded dictionary"), "dictionary persisted");
     await nav(page, "#/more/challenge"); ok((await text(page)).includes("Resume at day"), "challenge persisted");
   });
 
   await test("accessibility basics: every button/input has a name, tap targets ≥ 36px, no horizontal scroll", async () => {
-    for (const h of ["today", "track", "focus", "progress", "progress/calendar", "more/goals", "more/vocab", "more/data"]) {
+    for (const h of ["today", "track", "focus", "progress", "progress/calendar", "more/goals", "more/vocab", "more/data", "more/playbook", "more/dictionary"]) {
       await nav(page, "#/" + h);
       const bad = await page.evaluate(() => [...document.querySelectorAll("button, a, input, select, textarea")].filter((e) => {
         const r = e.getBoundingClientRect(); if (!r.width || e.type === "checkbox" || e.type === "file") return false;

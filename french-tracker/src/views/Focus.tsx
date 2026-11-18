@@ -38,7 +38,7 @@ export function Focus() {
           {rows.map((r) => (
             <li key={r.activity}>
               <ActivityDot a={r.activity} /><span className="grow"><b>{ACTIVITY_LABEL[r.activity]}</b>
-                <small className="block">{r.target > 0 ? `${r.daysHit}/${r.daysTracked} days target met · ` : "optional · "}{r.daysPracticed} day{r.daysPracticed === 1 ? "" : "s"} practised ·
+                <small className="sub">{r.target > 0 ? `${r.daysHit}/${r.daysTracked} days target met · ` : "optional · "}{r.daysPracticed} day{r.daysPracticed === 1 ? "" : "s"} practised ·
                   {r.lastDate ? ` last ${formatDate(r.lastDate, { day: "numeric", month: "short" })}` : " never"}</small></span>
               {r.target > 0 && <b>{r.pctOfTarget}%</b>}
               {r.target > 0 && <div className="full"><Meter value={r.pctOfTarget} max={100} tone={r.pctOfTarget >= 80 ? "done" : r.pctOfTarget >= 40 ? "partial" : "missed"} /></div>}

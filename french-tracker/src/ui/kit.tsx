@@ -24,6 +24,7 @@ export function Ring({ pct, size = 112, label, sub }: { pct: number; size?: numb
   return (
     <div className="ring" style={{ width: size, height: size }} role="img" aria-label={`${label}${sub ? ", " + sub : ""}`}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#38bdf8" /><stop offset="1" stopColor="#3a56d4" /></linearGradient></defs>
         <circle cx={size / 2} cy={size / 2} r={r} className="ring-bg" />
         <circle cx={size / 2} cy={size / 2} r={r} className="ring-fg" strokeDasharray={`${(v / 100) * c} ${c}`} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
       </svg>

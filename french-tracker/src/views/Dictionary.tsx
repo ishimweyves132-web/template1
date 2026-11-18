@@ -1,28 +1,65 @@
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../store";
-import { Card, Page, Meter, Empty } from "../ui/kit";
+import { Card, Page, Meter, Empty, Segmented } from "../ui/kit";
+import { BUILTIN_WORD_COUNT, searchBuiltin, searchByMeaning, searchPhrases } from "../lib/builtin";
+import { PHRASE_CATEGORIES } from "../data/phrases";
 import { DictError, downloadPack, fetchManifest, normalize, removeDictionary, searchDict, type DictEntry, type DictProgress, type Manifest } from "../lib/dict";
 
 const mb = (b: number) => b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`;
-const POS: Record<string, string> = { noun: "noun", verb: "verb", adj: "adjective", adv: "adverb", prep: "preposition", pron: "pronoun", conj: "conjunction", intj: "interjection", phrase: "phrase" };
+const POS: Record<string, string> = { det: "determiner", noun: "noun", verb: "verb", adj: "adjective", adv: "adverb", prep: "preposition", pron: "pronoun", conj: "conjunction", intj: "interjection", phrase: "phrase" };
 const GENDER: Record<string, string> = { m: "masculine", f: "feminine", mf: "masculine or feminine" };
 
 export function Dictionary() {
   const { settings, updateSettings, db, notify } = useApp();
   const meta = settings.dict;
+  const [tab, setTab] = useState<"words" | "phrases">("words");
   return (
     <Page title="Dictionary" back="#/more">
-      {meta?.installed ? <Search /> : null}
-      <Install installed={!!meta?.installed} />
-      {meta?.installed && (
-        <Card title="Installed dictionary">
-          <p>{meta.count.toLocaleString()} entries · {mb(meta.size)} download · version {meta.version}</p>
-          <p className="small">Source: {meta.source}<br />Licence: {meta.license}</p>
-          <p className="note">Works fully offline. No audio pronunciation is included.</p>
-          <button className="btn danger" onClick={async () => { if (confirm("Remove the dictionary from this device? Your saved vocabulary is kept.")) { await removeDictionary(db); await updateSettings({ dict: null }); notify("Dictionary removed"); } }}>Remove dictionary</button>
-        </Card>
+      <Segmented label="Dictionary sections" value={tab} onChange={setTab} options={[{ v: "words", t: "Words" }, { v: "phrases", t: "Phrasebook" }]} />
+      {tab === "phrases" ? <Phrasebook /> : (
+        <>
+          <Search />
+          <Install installed={!!meta?.installed} />
+          {meta?.installed && (
+            <Card title="Downloaded dictionary">
+              <p>{meta.count.toLocaleString()} entries · {mb(meta.size)} download · version {meta.version}</p>
+              <p className="small">Source: {meta.source}<br />Licence: {meta.license}</p>
+              <p className="note">Works fully offline. No audio pronunciation is included.</p>
+              <button className="btn danger" onClick={async () => { if (confirm("Remove the downloaded dictionary from this device? Your saved vocabulary and the built-in words are kept.")) { await removeDictionary(db); await updateSettings({ dict: null }); notify("Dictionary removed"); } }}>Remove downloaded dictionary</button>
+            </Card>
+          )}
+        </>
       )}
     </Page>
+  );
+}
+
+function Phrasebook() {
+  const { vocab, saveVocab, notify } = useApp();
+  const [q, setQ] = useState(""); const [cat, setCat] = useState("");
+  const list = searchPhrases(q, cat);
+  return (
+    <>
+      <input className="search" type="search" placeholder="Search phrases in French or English" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search phrases" />
+      <div className="chips" role="group" aria-label="Phrase categories">
+        <button className={`chip ${cat === "" ? "on" : ""}`} onClick={() => setCat("")}>All</button>
+        {PHRASE_CATEGORIES.map((c) => <button key={c} className={`chip ${cat === c ? "on" : ""}`} aria-pressed={cat === c} onClick={() => setCat(c)}>{c}</button>)}
+      </div>
+      <p className="note pad">{list.length} phrase{list.length === 1 ? "" : "s"} · built in, works offline. Write-ups are original to this app.</p>
+      {list.length === 0 && <Card><Empty>No phrase matches “{q}”.</Empty></Card>}
+      {list.map((p) => {
+        const saved = vocab.some((v) => normalize(v.fr) === normalize(p.fr));
+        return (
+          <Card key={p.fr} className="phrase">
+            <p className="pfr" lang="fr">{p.fr}</p>
+            <p>{p.en}</p>
+            {p.note && <p className="muted small">{p.note}</p>}
+            <div className="sess"><span className="tag">{p.cat}</span><span className="grow" />
+              {saved ? <span className="pill done">Saved</span> : <button className="btn small" onClick={() => saveVocab({ fr: p.fr, en: p.en, notes: p.note, source: "dictionary" }).then(() => notify("Phrase saved to vocabulary"))}>＋ Save</button>}</div>
+          </Card>
+        );
+      })}
+    </>
   );
 }
 
@@ -47,11 +84,11 @@ function Install({ installed }: { installed: boolean }) {
     setBusy(false); setProg(null);
   };
   if (installed && !info && !err) return (
-    <Card title="Update dictionary"><p className="muted">Needs internet only while downloading.</p><button className="btn" onClick={check} disabled={busy}>Check for a download</button></Card>
+    <Card title="Bigger dictionary"><p className="muted">Needs internet only while downloading.</p><button className="btn" onClick={check} disabled={busy}>Check for a download</button></Card>
   );
   return (
-    <Card title={installed ? "Update dictionary" : "Offline dictionary (optional)"}>
-      {!installed && <p>Download a French dictionary once, then look up words with no internet. The download is separate from the app, so the app itself stays small.</p>}
+    <Card title={installed ? "Update downloaded dictionary" : "Bigger dictionary (optional download)"}>
+      {!installed && <p>The built-in starter has {BUILTIN_WORD_COUNT} common words. For thousands more, with definitions, download a full dictionary pack once and search it offline. It is separate from the app, so the app stays small.</p>}
       {!info && <button className="btn primary" onClick={check} disabled={busy}>{busy ? "Checking…" : partial ? "Check and resume download" : "Check download size"}</button>}
       {info && (
         <div>
@@ -72,37 +109,52 @@ function Install({ installed }: { installed: boolean }) {
 }
 
 function Search() {
-  const { db, vocab, saveVocab, notify } = useApp();
-  const [q, setQ] = useState(""); const [res, setRes] = useState<DictEntry[]>([]);
+  const { db, vocab, saveVocab, notify, settings } = useApp();
+  const hasPack = !!settings.dict?.installed;
+  const [q, setQ] = useState(""); const [res, setRes] = useState<DictEntry[]>([]); const [alt, setAlt] = useState<DictEntry[]>([]);
   useEffect(() => {
-    let live = true; const id = setTimeout(() => { if (q.trim()) void searchDict(db, q).then((r) => live && setRes(r)); else setRes([]); }, 120);
+    let live = true;
+    const id = setTimeout(async () => {
+      if (!q.trim()) { setRes([]); setAlt([]); return; }
+      const pack = hasPack ? await searchDict(db, q) : [];
+      const have = new Set(pack.map((e) => normalize(e.w)));
+      // The downloaded pack is more complete, so it wins for any headword it has; built-in fills the gaps.
+      const built = searchBuiltin(q).filter((e) => !have.has(e.k));
+      const main = [...pack, ...built];
+      const mainKeys = new Set(main.map((e) => e.k));
+      if (live) { setRes(main); setAlt(main.length >= 3 ? [] : searchByMeaning(q).filter((e) => !mainKeys.has(e.k))); }
+    }, 120);
     return () => { live = false; clearTimeout(id); };
-  }, [q, db]);
-  const merged = new Map<string, DictEntry[]>();
-  res.forEach((e) => merged.set(e.w, [...(merged.get(e.w) ?? []), e]));
+  }, [q, db, hasPack]);
+  const group = (list: DictEntry[]) => { const m = new Map<string, DictEntry[]>(); list.forEach((e) => m.set(e.w, [...(m.get(e.w) ?? []), e])); return [...m.entries()]; };
+  const card = (w: string, entries: DictEntry[], cls: string) => {
+    const saved = vocab.find((v) => normalize(v.fr) === normalize(w));
+    const hasEn = entries.some((e) => e.d.some((d) => d.l === "en"));
+    const first = entries.flatMap((e) => e.d)[0]?.t ?? "";
+    const ex = entries.flatMap((e) => e.x ?? [])[0];
+    return (
+      <Card key={w} className={cls}>
+        <div className="sess"><h2 className="grow word" lang="fr">{w}</h2>
+          {!saved ? <button className="btn small" onClick={() => saveVocab({ fr: w, en: hasEn ? first : "", example: ex?.f ?? "", notes: !hasEn && first ? first : "", source: "dictionary" }).then(() => notify(`“${w}” saved to vocabulary`))}>＋ Save</button>
+            : <button className="btn small on" onClick={() => saveVocab({ ...saved, status: saved.status === "learned" ? "learning" : "learned" })}>{saved.status === "learned" ? "✓ Learned" : "Learning"}</button>}</div>
+        {entries.map((e, i) => (
+          <div key={i} className="sense">
+            <p className="muted">{[e.p && (POS[e.p] ?? e.p), e.g && GENDER[e.g], e.ipa].filter(Boolean).join(" · ")}</p>
+            <ol>{e.d.map((d, j) => <li key={j}>{d.t} <small className="muted">({d.l === "en" ? "English" : "français"})</small></li>)}</ol>
+            {e.x?.map((x, j) => <p key={j} className="ex" lang="fr">“{x.f}”{x.e && <span className="muted"> — {x.e}</span>}</p>)}
+          </div>
+        ))}
+      </Card>
+    );
+  };
   return (
     <>
-      <input className="search" type="search" lang="fr" autoCapitalize="none" autoCorrect="off" placeholder="Search a French word" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search the dictionary" />
-      {q.trim() && res.length === 0 && <Card><Empty>No entry for “{q}”. Accents are optional.</Empty></Card>}
-      {[...merged.entries()].map(([w, entries]) => {
-        const saved = vocab.find((v) => normalize(v.fr) === normalize(w));
-        const first = entries.flatMap((e) => e.d)[0]?.t ?? "";
-        const ex = entries.flatMap((e) => e.x ?? [])[0];
-        return (
-          <Card key={w} className="entry">
-            <div className="sess"><h2 className="grow word" lang="fr">{w}</h2>
-              {!saved ? <button className="btn small" onClick={() => saveVocab({ fr: w, en: entries.some((e) => e.d.some((d) => d.l === "en")) ? first : "", example: ex?.f ?? "", notes: first && !entries.some((e) => e.d.some((d) => d.l === "en")) ? first : "", source: "dictionary" }).then(() => notify(`“${w}” saved to vocabulary`))}>＋ Save</button>
-                : <button className="btn small on" onClick={() => saveVocab({ ...saved, status: saved.status === "learned" ? "learning" : "learned" })}>{saved.status === "learned" ? "✓ Learned" : "Learning"}</button>}</div>
-            {entries.map((e, i) => (
-              <div key={i} className="sense">
-                <p className="muted">{[e.p && (POS[e.p] ?? e.p), e.g && GENDER[e.g], e.ipa].filter(Boolean).join(" · ")}</p>
-                <ol>{e.d.map((d, j) => <li key={j}>{d.t} <small className="muted">({d.l === "en" ? "English" : "français"})</small></li>)}</ol>
-                {e.x?.map((x, j) => <p key={j} className="ex" lang="fr">“{x.f}”{x.e && <span className="muted"> — {x.e}</span>}</p>)}
-              </div>
-            ))}
-          </Card>
-        );
-      })}
+      <input className="search" type="search" lang="fr" autoCapitalize="none" autoCorrect="off" placeholder="Search a French word, or an English meaning" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search the dictionary" />
+      {!q.trim() && <p className="note pad">{BUILTIN_WORD_COUNT} built-in words with gender and examples, always available offline. Accents are optional when typing.</p>}
+      {q.trim() && res.length === 0 && alt.length === 0 && <Card><Empty>No entry for “{q}” in {hasPack ? "the dictionary" : "the built-in words"}. Accents are optional.{!hasPack && " A downloadable dictionary has many more words."}</Empty></Card>}
+      {group(res).map(([w, es]) => card(w, es, "entry"))}
+      {alt.length > 0 && <p className="note pad">{res.length ? "Also matching in English meanings:" : `No French word “${q}”. Found by English meaning:`}</p>}
+      {group(alt).map(([w, es]) => card(w, es, "entry alt"))}
     </>
   );
 }

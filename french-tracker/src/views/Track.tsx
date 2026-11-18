@@ -44,12 +44,14 @@ export function Track() {
               <div className="grow"><b>{ACTIVITY_LABEL[i.activity]}</b><small>{ACTIVITY_HINT[i.activity]}</small></div>
               <div className="num"><b>{i.achieved}</b><small>{i.target > 0 ? `of ${i.target} min` : "min · optional"}</small></div>
             </div>
-            <div className="btns">
+            <div className="btns two-up">
               <button className="btn" disabled={!!timer} onClick={() => startTimer(i.activity)}>▶ Start</button>
               <button className="btn" onClick={() => setDraft({ date: today, activity: i.activity, minutes: 0 })}>＋ Add minutes</button>
-              {i.target > 0 && <button className={`btn ${i.marked ? "on" : ""}`} aria-pressed={i.marked}
+            </div>
+            <div className="btns sub-row">
+              {i.target > 0 && <button className={`btn small ${i.marked ? "on" : "ghost"}`} aria-pressed={i.marked}
                 onClick={() => toggleMark(today, i.activity)} title="Mark as done without changing recorded minutes">{i.marked ? "✓ Done" : "Mark done"}</button>}
-              <button className="btn ghost" onClick={() => { setTgt(i.activity); setTv(String(i.target)); }}>Target</button>
+              <button className="btn small ghost" onClick={() => { setTgt(i.activity); setTv(String(i.target)); }}>Set target</button>
             </div>
           </li>
         ))}

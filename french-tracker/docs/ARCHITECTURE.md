@@ -68,3 +68,14 @@ as a banner on Today. It is sent at most once a day and never if you already pra
 ## Performance
 No framework beyond React, hand-written SVG charts, no chart library, one CSS file. Statistics for 3 years of data
 (about 3,300 sessions) render in well under a second even with a 6x CPU slowdown (see README test results).
+
+## Visual design
+White base with a few static, soft colour glows behind frosted-glass cards (`backdrop-filter`), a floating glass nav and a blurred sheet scrim.
+One light theme; every text colour is at least 4.5:1 on white. Glass is only a layer on top of solid readable colours, with a solid-white fallback
+where `backdrop-filter` is unsupported or `prefers-reduced-transparency` is set. Glows are static (no animation). Caveat: blur is GPU-composited, and the
+performance figures in the README were measured with CPU throttling in headless Chromium, which does not reproduce a real low-end phone GPU. If a very old device
+stutters, the CSS variable block at the top of `styles.css` is the single place to reduce blur radii.
+
+## Spaced review and playbook
+`lib/review.ts` schedules saved words at 1, 3, 7, 14, 30 and 60 days after the last review (learned words are not scheduled). `lib/boost.ts` picks
+"today's boost" from the user's own records: "never miss twice" after a missed day, otherwise the activity with the lowest share of its target.

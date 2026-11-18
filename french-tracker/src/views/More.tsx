@@ -1,10 +1,11 @@
 import { Card, Page } from "../ui/kit";
 
 const items = [
+  ["#/more/playbook", "Fast French", "Habits that make your hours count more"],
   ["#/more/challenge", "30-day challenge", "Daily objectives, resume after breaks"],
   ["#/more/goals", "Goals & badges", "Targets, milestones, personal records"],
   ["#/more/vocab", "Vocabulary", "Words and expressions you saved"],
-  ["#/more/dictionary", "Dictionary", "Optional offline download"],
+  ["#/more/dictionary", "Dictionary & phrasebook", "Built in, works offline"],
   ["#/more/reminders", "Reminders", "Gentle, optional"],
   ["#/more/data", "Data & backup", "Export, import, safety copies"],
 ];
