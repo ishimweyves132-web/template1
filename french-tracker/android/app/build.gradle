@@ -7,8 +7,10 @@ android {
         applicationId "com.frenchmastery.tracker"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // CI passes -PappVersionCode=<build number> -PappVersionName=1.0.<build number>, so every build has a higher version
+        // and Android accepts it as an update. Local builds default to 1 / 1.0.
+        versionCode (project.findProperty("appVersionCode") ?: "1").toInteger()
+        versionName (project.findProperty("appVersionName") ?: "1.0")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,7 +18,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Optional fixed signing key. Only used when the build environment provides one (a GitHub secret in CI); otherwise Android's
+    // debug key is used. A fixed key lets every build install over the previous one with your data kept.
+    def ksPath = System.getenv("ANDROID_KEYSTORE_PATH")
+    if (ksPath) {
+        signingConfigs {
+            fixed {
+                storeFile file(ksPath)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
+        debug {
+            if (ksPath) signingConfig signingConfigs.fixed
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

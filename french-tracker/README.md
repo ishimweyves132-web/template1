@@ -36,6 +36,22 @@ npm ci && npm run build && npx cap sync android && cd android && ./gradlew assem
 Install by opening the `.apk` on the phone (allow "install unknown apps" for the app you open it from). This is a debug-signed build, fine for personal use;
 a Play Store release needs your own signing key.
 
+### Versions: every build is kept
+Each successful build publishes a **GitHub Release** (`v1.0.<build number>`) with the APK attached, so every version stays downloadable, without a GitHub login:
+repo page -> **Releases**. Workflow artifacts (the Actions tab) are also kept, but GitHub deletes them after 90 days; Releases are permanent.
+Version numbers rise with every build (`versionCode` = build number), so Android treats a newer APK as an update.
+
+**Installing over a previous version keeps your data only if both were signed with the same key.** Without any setup, CI signs with Android's debug key, which is new on every
+build, so you must uninstall the old version first (export a backup before). To make updates install in place, add a fixed signing key as repository secrets (the repo is public, so
+never commit the key file):
+```
+keytool -genkeypair -v -keystore app.keystore -alias fmt -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 app.keystore        # copy this output
+```
+Then GitHub -> repo -> Settings -> Secrets and variables -> Actions -> New repository secret: `ANDROID_KEYSTORE_B64` (the base64 text), `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS` (`fmt`), and optionally `ANDROID_KEY_PASSWORD`. Keep `app.keystore` and its passwords somewhere safe: if you lose them, installed copies can no longer be updated in place.
+Each release says in its notes which kind of key signed it. Switching from the debug key to a fixed key needs one last uninstall.
+
 **Dictionary:** the APK build also bundles a real 98,303-entry Wiktionary French-to-English dictionary (see `docs/DICTIONARY.md`), installed offline on first launch.
 
 **Status:** the native layer has NOT been run on a device or emulator, and the APK was not built in the authoring sandbox (the Android SDK host was blocked).

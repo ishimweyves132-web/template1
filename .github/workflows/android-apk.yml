@@ -6,6 +6,8 @@ on:
   push:
     branches: [claude/french-mastery-tracker-app-jbyezh]
     paths: ["french-tracker/**", ".github/workflows/android-apk.yml"]
+permissions:
+  contents: write   # needed to publish a GitHub Release for every build
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -40,10 +42,37 @@ jobs:
         run: node tools/verify-pack.mjs public/dict "chat:m:cat,maison:f:house,être::be,avoir::have,aller::go,bonjour::hello,merci::thank,école:f:school,livre:m:book,eau:f:water,ville:f:city,pays:m:country,ami:m:friend,femme:f:woman,homme:m:man,temps:m:time,travail:m:work,langue:f:language,manger::eat,français::french" "manger:mangeons,être:sommes,avoir:avons,aller:allons,chat:chats,beau:belle,chanter:chantons"
       - run: npm run build
       - run: npx cap sync android
+      - name: Use the fixed signing key if one is configured (optional secrets)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ] && [ -n "$KS_ALIAS" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/app.keystore"
+            { echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/app.keystore"; echo "ANDROID_KEYSTORE_PASSWORD=$KS_PASS"; echo "ANDROID_KEY_ALIAS=$KS_ALIAS"; echo "ANDROID_KEY_PASSWORD=${KS_KEYPASS:-$KS_PASS}"; } >> "$GITHUB_ENV"
+            echo "Signing with the configured fixed key"
+          else
+            echo "No fixed key configured: using Android's debug key (each build then has a different signature)"
+          fi
       - name: Build debug APK
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug -PappVersionCode=${{ github.run_number }} -PappVersionName=1.0.${{ github.run_number }}
         working-directory: french-tracker/android
       - name: Rename
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk french-mastery-tracker.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk french-mastery-tracker-v1.0.${{ github.run_number }}.apk
       - uses: actions/upload-artifact@v4
-        with: { name: french-mastery-apk, path: french-tracker/french-mastery-tracker.apk, if-no-files-found: error }
+        with:
+          name: french-mastery-apk-v1.0.${{ github.run_number }}
+          path: french-tracker/french-mastery-tracker-v1.0.*.apk
+          if-no-files-found: error
+      - name: Publish a permanent GitHub Release (every version is kept)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="1.0.${{ github.run_number }}"
+          SIGN="debug key (differs per build: uninstall the previous version before installing this one)"
+          [ -n "${ANDROID_KEYSTORE_PATH:-}" ] && SIGN="fixed key (installs over the previous version, your data is kept)"
+          DICT="$(python3 -c "import json;m=json.load(open('public/dict/manifest.json'));print(f\"{m['count']:,} entries, pack {m['size']/1e6:.1f} MB, version {m['version']}\")" 2>/dev/null || echo unknown)"
+          printf '%s\n' "Build $V from commit ${GITHUB_SHA::7}." "" "- Dictionary: $DICT (Wiktionary via kaikki.org, CC BY-SA 4.0 / GFDL)" "- Signed with: $SIGN" "- Not tested on a physical device." "" "Latest commit message:" "" "$(git log -1 --pretty=%B)" > "$RUNNER_TEMP/notes.md"
+          gh release create "v$V" "french-mastery-tracker-v$V.apk" --title "French Mastery Tracker $V" --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA" --prerelease
