@@ -32,6 +32,19 @@ export function convertEntry(obj, lang) {
     const m = /\b(m|f|mf)\b/.exec((obj.head_templates?.[0]?.expansion ?? "").replace(/\(.*?\)/g, ""));
     if (m) g = m[1];
   }
+  const clean = (s) => String(s).replace(/\s+/g, " ").trim();
+  const words = (...lists) => [...new Set(lists.flat().filter(Boolean).map((x) => clean(typeof x === "string" ? x : x.word ?? "")).filter((w) => w && w !== obj.word && w.length < 60))];
+  const et = obj.etymology_text ? clean(obj.etymology_text).slice(0, 420) : "";
+  const dv = words(obj.derived ?? []).slice(0, 24);
+  const rl = words(obj.related ?? []).slice(0, 16);
+  const sy = words(obj.synonyms ?? [], senses.flatMap((s) => s.synonyms ?? [])).slice(0, 10);
+  const an = words(obj.antonyms ?? [], senses.flatMap((s) => s.antonyms ?? [])).slice(0, 8);
+  // Inflected forms live on the base entry ("mangeons|first-person plural present indicative") and are indexed on the device,
+  // so searching a form finds its base word without storing hundreds of thousands of separate form entries.
+  const JUNK_TAGS = new Set(["table-tags", "inflection-template", "class", "romanization", "multiword-construction"]);
+  const seenForms = new Set();
+  const fm = (obj.forms ?? []).filter((f) => f && typeof f.form === "string" && f.form !== obj.word && !/no-table|table-tags|inflection-template/.test(f.form) && !(f.tags ?? []).some((t) => JUNK_TAGS.has(t)))
+    .map((f) => `${clean(f.form)}|${(f.tags ?? []).join(" ").slice(0, 60)}`).filter((x) => !seenForms.has(x) && seenForms.add(x)).slice(0, 120);
   const d = senses.slice(0, 8).map((s) => ({ t: s.glosses.join(" — ").slice(0, 400), l: lang }));
   const x = senses.flatMap((s) => s.examples ?? []).filter((e) => e.text && e.text.length < 220).slice(0, 3)
     .map((e) => (e.english ? { f: e.text, e: e.english } : { f: e.text }));
@@ -40,6 +53,12 @@ export function convertEntry(obj, lang) {
   if (obj.pos) out.p = obj.pos;
   if (g) out.g = g;
   if (ipa) out.ipa = ipa;
+  if (et) out.et = et;
+  if (dv.length) out.dv = dv;
+  if (rl.length) out.rl = rl;
+  if (sy.length) out.sy = sy;
+  if (an.length) out.an = an;
+  if (fm.length) out.fm = fm;
   if (x.length) out.x = x;
   return out;
 }

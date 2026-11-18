@@ -290,7 +290,7 @@ const has = (page, s, sel = "main") => page.waitForFunction(([q, x]) => document
     eq(await page.locator("button", { hasText: /^Download/ }).count(), 1);
     await page.locator("button", { hasText: /^Download/ }).click();
     await page.waitForSelector("text=Full dictionary", { timeout: 15000 });
-    ok((await text(page)).includes("12 entries"), "12 French entries (non-French ignored): " + (await text(page)).slice(0, 300));
+    ok((await text(page)).includes("15 entries"), "15 French entries (non-French ignored): " + (await text(page)).slice(0, 300));
   });
 
   await test("phrasebook: expressions from the installed dictionary are searchable (French, English meaning, accents optional)", async () => {
@@ -301,6 +301,23 @@ const has = (page, s, sel = "main") => page.waitForFunction(([q, x]) => document
     await page.getByLabel("Search phrases").fill("dupont"); await has(page, "No phrase matches");
     await page.getByLabel("Search phrases").fill("potato"); await has(page, "pomme de terre");
     await page.locator(".phrase.alt").getByRole("button", { name: "＋ Save" }).first().click(); await has(page, "Saved");
+  });
+
+  await test("word formation: searching an inflected form finds the base word, its etymology, derived and related words", async () => {
+    await nav(page, "#/more/dictionary"); await page.getByRole("tab", { name: "Words" }).click();
+    await page.getByLabel("Search the dictionary").fill("chantons"); await has(page, "to sing");
+    let t = (await text(page)).replace(/WORD FORMATION|DERIVED WORDS|RELATED WORDS|SYNONYMS/g, (m) => m[0] + m.slice(1).toLowerCase());   // headings are shown in capitals by CSS
+    ok(t.includes("“chantons” is a form of chanter") && t.includes("first-person plural present indicative"), "form note: " + t.slice(0, 300));
+    ok(t.includes("Word formation") && t.includes("From Latin cantāre"), "etymology: " + t.slice(0, 600));
+    ok(t.includes("Derived words") && t.includes("Related words") && t.includes("Synonyms"), "relation sections: " + t.slice(0, 700));
+    ok(!t.includes("no-table-tags") && !t.includes("inflection-template"), "junk form rows are not shown");
+    await page.getByLabel("Search the dictionary").fill("CHANTÉ"); await has(page, "is a form of chanter");   // accents/case insensitive
+    await page.getByLabel("Search the dictionary").fill("chanter"); await has(page, "Forms (");
+    await page.locator("details.forms summary").first().click(); await has(page, "chantons");
+    await page.getByRole("button", { name: "chanteur", exact: true }).click();                              // tap a derived word
+    await has(page, "singer"); await has(page, "From chanter + -eur");                                    // its own word formation
+    eq(await page.getByLabel("Search the dictionary").inputValue(), "chanteur");
+    await page.screenshot({ path: path.join(out, "09-word-formation.png"), fullPage: true });
   });
 
   await test("dictionary: search works with the network switched OFF (accents optional, gender, IPA, example, EN gloss)", async () => {

@@ -3,7 +3,7 @@ import { defaultSettings, type Settings } from "./model";
 
 export const STORES = ["sessions", "marks", "vocab", "goals", "challenges", "snapshots"] as const;
 export type StoreName = (typeof STORES)[number];
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const wrap = <T,>(r: IDBRequest<T>) =>
   new Promise<T>((res, rej) => {
@@ -25,7 +25,11 @@ export class Db {
       const req = indexedDB.open(name, DB_VERSION);
       req.onupgradeneeded = (ev) => {
         const d = req.result;
-        if (ev.oldVersion >= 1) { d.createObjectStore("phrases", { autoIncrement: true }); return; } // v1 -> v2: add the phrases store only
+        if (ev.oldVersion >= 1) { // upgrading an existing database: add only what is new, never touch user data
+          if (ev.oldVersion < 2) d.createObjectStore("phrases", { autoIncrement: true });
+          if (ev.oldVersion < 3) req.transaction!.objectStore("dict").createIndex("f", "fk", { multiEntry: true }); // search by inflected form
+          return;
+        }
         d.createObjectStore("phrases", { autoIncrement: true });
         d.createObjectStore("sessions", { keyPath: "id" }).createIndex("date", "date");
         d.createObjectStore("marks", { keyPath: "key" });
@@ -34,7 +38,7 @@ export class Db {
         d.createObjectStore("challenges", { keyPath: "id" });
         d.createObjectStore("snapshots", { keyPath: "id" });
         d.createObjectStore("kv", { keyPath: "key" });
-        d.createObjectStore("dict", { autoIncrement: true }).createIndex("k", "k");
+        const dict = d.createObjectStore("dict", { autoIncrement: true }); dict.createIndex("k", "k"); dict.createIndex("f", "fk", { multiEntry: true });
         d.createObjectStore("partial", { keyPath: "key" });
       };
       req.onsuccess = () => res(new Db(req.result));

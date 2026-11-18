@@ -10,6 +10,11 @@ the result. Measured in the real build: 98,303 entries (92,845 distinct words; 5
 On first launch the app installs it into local storage in the background (one time, roughly 10 to 30 seconds on a slow phone, shown with a progress bar), verified by size and SHA-256.
 Licence: Wiktionary is CC BY-SA 4.0 and GFDL; attribution is shown in the app and in `NOTICE.md`. The dictionary data, not the app code, carries that licence.
 
+**Word formation, related words and forms (pack format f2).** Each entry can also carry its etymology (how the word is formed), derived words, related words, synonyms,
+antonyms and inflected forms ("mangeons|first-person plural present indicative"). Forms are stored on the base word and indexed on the device (a multi-entry IndexedDB index), so searching
+"mangeons" finds "manger" with a note saying which form it is, without storing hundreds of thousands of separate form entries. Tapping a derived/related word searches it.
+The build verifies that real verbs list real forms (manger/mangeons, être/sommes, ...). Storage cost on the device is roughly double the base dictionary.
+
 **Not committed:** the generated pack is never stored in the repository (`public/dict/` is git-ignored); only the build recipe is. The app contains the downloader, verifier, installer
 and search. You publish a *pack* (a static file plus a tiny `manifest.json`) anywhere you control, e.g. next to the app
 in `dist/dict/`, and the app downloads it on demand.

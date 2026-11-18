@@ -146,3 +146,7 @@ textarea { resize: vertical; } input[type=checkbox], input[type=radio] { width: 
 @media (prefers-reduced-motion: no-preference) { .meter i, .ring-fg { transition: width .25s, stroke-dasharray .25s; } }
 
 .stats-row { margin-bottom: 14px; padding: 0 4px; }
+
+.entry h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 12px 0 4px; }
+.ety p { margin: 0; font-size: .95rem; } .formnote { background: rgba(58, 86, 212, .10); border-radius: 12px; padding: 8px 12px; margin: 10px 0 0; font-size: .92rem; }
+.chips.wrap { flex-wrap: wrap; overflow: visible; padding: 2px 0 4px; } .forms ul { list-style: none; padding: 0; margin: 6px 0; columns: 2; } .forms li { break-inside: avoid; padding: 3px 0; font-size: .9rem; }

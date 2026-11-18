@@ -299,3 +299,68 @@ describe("dictionary phrases (multi-word entries)", () => {
     expect(await rebuildPhrases(db)).toBe(0);                               // idempotent
   });
 });
+
+describe("word formation, related words and inflected forms", () => {
+  const raw = {
+    word: "chanter", lang_code: "fr", pos: "verb", etymology_text: "From Latin cantāre,   frequentative of canere.",
+    senses: [{ glosses: ["to sing"], synonyms: [{ word: "fredonner" }] }],
+    derived: [{ word: "chanteur" }, { word: "chanson" }, { word: "chanteur" }, { word: "chanter" }],   // duplicate + itself
+    related: [{ word: "chant" }], antonyms: [{ word: "se taire" }],
+    forms: [
+      { form: "chantons", tags: ["first-person", "plural", "present", "indicative"] }, { form: "chanté", tags: ["participle", "past"] },
+      { form: "chantons", tags: ["first-person", "plural", "present", "indicative"] },                 // duplicate
+      { form: "no-table-tags", source: "conjugation" }, { form: "fr-conj-er", tags: ["inflection-template"] }, { form: "chanter", tags: ["infinitive"] },
+    ],
+  };
+  it("builder extracts etymology (whitespace cleaned), derived, related, synonyms, antonyms and forms; drops junk, duplicates and self-references", () => {
+    const e = convertEntry(raw, "en")!;
+    expect(e.et).toBe("From Latin cantāre, frequentative of canere.");
+    expect(e.dv).toEqual(["chanteur", "chanson"]); expect(e.rl).toEqual(["chant"]);
+    expect(e.sy).toEqual(["fredonner"]); expect(e.an).toEqual(["se taire"]);
+    expect(e.fm).toEqual(["chantons|first-person plural present indicative", "chanté|participle past"]);
+  });
+  it("entries without those fields stay lean (no empty arrays)", () => {
+    const e = convertEntry({ word: "x", lang_code: "fr", senses: [{ glosses: ["a"] }] }, "en") as any;
+    expect(Object.keys(e).sort()).toEqual(["d", "w"]);
+  });
+
+  const lines = [convertEntry(raw, "en"), convertEntry({ word: "chanson", lang_code: "fr", pos: "noun", etymology_text: "From Old French chançon.", senses: [{ glosses: ["song"], tags: ["feminine"] }] }, "en")];
+  const pk = gzipSync(Buffer.from(lines.map((e) => JSON.stringify(e)).join("\n") + "\n"));
+  const mf = (): Manifest => ({ version: "f", file: "x.pack", size: pk.length, sha256: createHash("sha256").update(pk).digest("hex"), count: 2, license: "t", source: "t" });
+  it("searching an inflected form (accent/case-insensitive) returns the base word with the kind of form; forms are not separate entries", async () => {
+    const db = await open(); await installPack(db, new Blob([pk]), mf(), "u");
+    expect(await db.count("dict")).toBe(2);
+    const r = await searchDict(db, "CHANTÉ");
+    expect(r[0]).toMatchObject({ w: "chanter", matched: { form: "chanté", tags: "participle past" } });
+    expect((await searchDict(db, "chantons"))[0]!.matched).toEqual({ form: "chantons", tags: "first-person plural present indicative" });
+    const base = (await searchDict(db, "chanter"))[0]!;
+    expect(base.matched).toBeUndefined(); expect(base.et).toMatch(/Latin/); expect(base.dv).toContain("chanson");
+    expect((await searchDict(db, "chanson")).filter((e) => e.w === "chanson").length).toBe(1);   // no duplicate via forms
+  });
+  it("keeps homographs that share word and part of speech (livre: book m / pound f), and does not duplicate form matches", async () => {
+    const hs = [{ w: "livre", p: "noun", g: "m", d: [{ t: "book", l: "en" }], fm: ["livres|plural"] }, { w: "livre", p: "noun", g: "f", d: [{ t: "pound", l: "en" }], fm: ["livres|plural"] }];
+    const bytes2 = gzipSync(Buffer.from(hs.map((e) => JSON.stringify(e)).join("\n") + "\n"));
+    const db = await open(); await installPack(db, new Blob([bytes2]), { version: "h", file: "x", size: bytes2.length, sha256: createHash("sha256").update(bytes2).digest("hex"), count: 2, license: "t", source: "t" }, "u");
+    expect((await searchDict(db, "livre")).map((e) => e.d[0]!.t).sort()).toEqual(["book", "pound"]);
+    const viaForm = await searchDict(db, "livres");
+    expect(viaForm.map((e) => e.d[0]!.t).sort()).toEqual(["book", "pound"]); expect(viaForm.every((e) => e.matched?.form === "livres")).toBe(true);
+  });
+  it("upgrades a v2 database to v3 (adds the forms index) without losing the dictionary or user data", async () => {
+    const name = `v2-${Math.random()}`;
+    await new Promise<void>((res, rej) => {
+      const r = indexedDB.open(name, 2);
+      r.onupgradeneeded = () => { const d = r.result; d.createObjectStore("sessions", { keyPath: "id" }); for (const s of ["marks", "vocab", "goals", "challenges", "snapshots", "kv", "partial"]) d.createObjectStore(s, { keyPath: s === "marks" || s === "kv" || s === "partial" ? "key" : "id" }); d.createObjectStore("dict", { autoIncrement: true }).createIndex("k", "k"); d.createObjectStore("phrases", { autoIncrement: true }); };
+      r.onsuccess = () => { const d = r.result; const tx = d.transaction(["sessions", "dict"], "readwrite"); tx.objectStore("sessions").put({ id: "keep", minutes: 9 }); tx.objectStore("dict").put({ k: "chat", w: "chat", d: [{ t: "cat", l: "en" }] }); tx.oncomplete = () => { d.close(); res(); }; tx.onerror = () => rej(tx.error); }; r.onerror = () => rej(r.error);
+    });
+    const db = await Db.open(name);
+    expect((await db.getAll<any>("sessions"))[0].minutes).toBe(9);
+    expect((await searchDict(db, "chat"))[0]!.w).toBe("chat");               // old entries still searchable (no forms until re-install)
+    expect(db.idb.transaction("dict").objectStore("dict").indexNames.contains("f")).toBe(true);
+  });
+  it("verifier checks that a verb really lists a given form", () => {
+    const dir = mkdtempSync(`${tmpdir()}/pack-f-`); writeFileSync(`${dir}/x.pack`, pk); writeFileSync(`${dir}/manifest.json`, JSON.stringify(mf()));
+    expect(verify(dir, "", "chanter:chantons").problems).toEqual([]);
+    expect(verify(dir, "", "chanter:chantez").problems.join()).toMatch(/form "chantez" not found/);
+    expect((verify(dir, "").stats as any).withEtymologyPct).toBe(100);
+  });
+});

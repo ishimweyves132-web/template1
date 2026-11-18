@@ -164,6 +164,11 @@ function Search() {
     const hasEn = entries.some((e) => e.d.some((d) => d.l === "en"));
     const first = entries.flatMap((e) => e.d)[0]?.t ?? "";
     const ex = entries.flatMap((e) => e.x ?? [])[0];
+    const uniq = (f: (e: DictEntry) => string[] | undefined) => [...new Set(entries.flatMap((e) => f(e) ?? []))];
+    const ety = entries.find((e) => e.et)?.et;
+    const derived = uniq((e) => e.dv), related = uniq((e) => e.rl).filter((x) => !derived.includes(x)), syn = uniq((e) => e.sy), ant = uniq((e) => e.an);
+    const matched = entries.find((e) => e.matched)?.matched;
+    const forms = entries.flatMap((e) => e.fm ?? []).map((f) => { const [form = "", tags = ""] = f.split("|"); return { form, tags }; });
     return (
       <Card key={w} className={cls}>
         <div className="sess"><h2 className="grow word" lang="fr">{w}</h2>
@@ -176,6 +181,17 @@ function Search() {
             {e.x?.map((x, j) => <p key={j} className="ex" lang="fr">“{x.f}”{x.e && <span className="muted"> — {x.e}</span>}</p>)}
           </div>
         ))}
+        {matched && <p className="formnote">“{matched.form}” is a form of <b>{w}</b>{matched.tags ? <> — {matched.tags}</> : null}.</p>}
+        {ety && <div className="ety"><h3>Word formation</h3><p>{ety}</p></div>}
+        {([["Derived words", derived], ["Related words", related], ["Synonyms", syn], ["Opposites", ant]] as [string, string[]][]).filter(([, l]) => l.length > 0).map(([label, l]) => (
+          <div key={label} className="rel"><h3>{label}</h3>
+            <div className="chips wrap">{l.map((x) => <button key={x} className="chip" lang="fr" onClick={() => { setQ(x); window.scrollTo(0, 0); }}>{x}</button>)}</div></div>
+        ))}
+        {forms.length > 0 && (
+          <details className="forms"><summary>Forms ({forms.length})</summary>
+            <ul>{forms.slice(0, 80).map((f) => <li key={f.form + f.tags}><b lang="fr">{f.form}</b><span className="muted"> {f.tags}</span></li>)}</ul>
+            {forms.length > 80 && <p className="note">Showing the first 80 forms.</p>}</details>
+        )}
       </Card>
     );
   };

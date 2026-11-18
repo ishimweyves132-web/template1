@@ -11,3 +11,6 @@
 {"word":"avoir hâte","lang_code":"fr","pos":"verb","senses":[{"glosses":["to look forward to"],"examples":[{"text":"J'ai hâte de partir.","english":"I can't wait to leave."}]}]}
 {"word":"pomme de terre","lang_code":"fr","pos":"noun","senses":[{"glosses":["potato"],"tags":["feminine"]}]}
 {"word":"Jean Dupont","lang_code":"fr","pos":"name","senses":[{"glosses":["a common name"]}]}
+{"word":"chanter","lang_code":"fr","pos":"verb","etymology_text":"From Latin cantāre, frequentative of canere (\"to sing\").","senses":[{"glosses":["to sing"],"examples":[{"text":"Elle chante dans la chorale.","english":"She sings in the choir."}]}],"derived":[{"word":"chanteur"},{"word":"chanson"},{"word":"déchanter"}],"related":[{"word":"chant"},{"word":"cantique"}],"synonyms":[{"word":"fredonner"}],"forms":[{"form":"chantons","tags":["first-person","plural","present","indicative"]},{"form":"chanté","tags":["participle","past"]},{"form":"no-table-tags","source":"conjugation"},{"form":"fr-conj-er","tags":["inflection-template"]}]}
+{"word":"chanson","lang_code":"fr","pos":"noun","etymology_text":"From Old French chançon, from Latin cantiōnem.","senses":[{"glosses":["song"],"tags":["feminine"]}]}
+{"word":"chanteur","lang_code":"fr","pos":"noun","etymology_text":"From chanter + -eur.","senses":[{"glosses":["singer"],"tags":["masculine"]}]}

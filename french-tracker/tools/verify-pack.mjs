@@ -7,7 +7,7 @@ import { gunzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-export function verify(dir, spec) {
+export function verify(dir, spec, formsSpec = "") {
   const problems = [];
   const manifest = JSON.parse(readFileSync(`${dir}/manifest.json`, "utf8"));
   const buf = readFileSync(`${dir}/${manifest.file}`);
@@ -24,6 +24,10 @@ export function verify(dir, spec) {
     if (g && !es.some((e) => e.g === g || e.g === "mf")) problems.push(`${w}: expected gender ${g}, got ${es.map((e) => e.g ?? "none").join("/")}`);
     if (gloss && !es.some((e) => e.d.some((d) => d.t.toLowerCase().includes(gloss.toLowerCase())))) problems.push(`${w}: no meaning containing "${gloss}" (got: ${es.flatMap((e) => e.d.map((d) => d.t)).slice(0, 3).join(" | ")})`);
   }
+  for (const item of formsSpec.split(",").filter(Boolean)) {   // "manger:mangeons" = manger must list the form mangeons
+    const [w, form] = item.split(":");
+    if (!(by.get(w) ?? []).some((e) => (e.fm ?? []).some((f) => f.split("|")[0] === form))) problems.push(`${w}: form "${form}" not found`);
+  }
   const nouns = entries.filter((e) => e.p === "noun");
   const pos = {}; for (const e of entries) pos[e.p ?? "?"] = (pos[e.p ?? "?"] ?? 0) + 1;
   const stats = {
@@ -32,6 +36,12 @@ export function verify(dir, spec) {
     withExamplesPct: Math.round((entries.filter((e) => e.x?.length).length / entries.length) * 100),
     multiWordEntries: entries.filter((e) => /\s/.test(e.w) && e.p !== "name").length,
     phraseTypePos: Object.fromEntries(Object.entries(pos).filter(([k]) => /phrase|proverb|prov/.test(k))),
+    withEtymologyPct: Math.round((entries.filter((e) => e.et).length / entries.length) * 100),
+    withDerivedPct: Math.round((entries.filter((e) => e.dv?.length).length / entries.length) * 100),
+    withRelatedPct: Math.round((entries.filter((e) => e.rl?.length).length / entries.length) * 100),
+    withSynonymsPct: Math.round((entries.filter((e) => e.sy?.length).length / entries.length) * 100),
+    withFormsPct: Math.round((entries.filter((e) => e.fm?.length).length / entries.length) * 100),
+    totalForms: entries.reduce((a, e) => a + (e.fm?.length ?? 0), 0),
     withIpaPct: Math.round((entries.filter((e) => e.ipa).length / entries.length) * 100),
     topPos: Object.entries(pos).sort((a, b) => b[1] - a[1]).slice(0, 6),
   };
@@ -39,8 +49,8 @@ export function verify(dir, spec) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const [dir, spec = ""] = process.argv.slice(2);
-  const r = verify(dir, spec);
+  const [dir, spec = "", formsSpec = ""] = process.argv.slice(2);
+  const r = verify(dir, spec, formsSpec);
   console.log("stats:", JSON.stringify(r.stats));
   console.log("sample:", JSON.stringify(r.sample).slice(0, 600));
   if (r.problems.length) { console.error("VERIFY FAILED:\n - " + r.problems.join("\n - ")); process.exit(5); }

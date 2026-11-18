@@ -15,6 +15,13 @@ export interface DictEntry {
   ipa?: string;
   d: { t: string; l: "fr" | "en" }[];            // definitions / translations
   x?: { f: string; e?: string }[];               // example sentences
+  et?: string;        // etymology / word formation
+  dv?: string[];      // derived words
+  rl?: string[];      // related words
+  sy?: string[]; an?: string[];   // synonyms / antonyms
+  fm?: string[];      // inflected forms, "form|tags"
+  fk?: string[];      // normalised forms for the index (built at install, not stored in the pack)
+  matched?: { form: string; tags: string };  // set by search when the query matched an inflected form
 }
 
 /** Multi-word headwords (idioms, expressions, compounds) are also kept in a separate store so the Phrasebook can search them. */
@@ -120,7 +127,9 @@ export async function installPack(db: Db, blob: Blob, manifest: Manifest, url: s
   const take = (line: string) => {
     if (!line.trim()) return;
     const e = JSON.parse(line) as Omit<DictEntry, "k">;
-    const full = { ...e, k: normalize(e.w) }; batch.push(full); if (isPhrase(full)) phr.push(full);
+    const full: DictEntry = { ...e, k: normalize(e.w) };
+    if (full.fm?.length) full.fk = [...new Set(full.fm.map((f) => normalize(f.split("|")[0] ?? "")).filter((f) => f && f !== full.k))];
+    batch.push(full); if (isPhrase(full)) phr.push(full);
   };
   try {
     for (;;) {
@@ -161,8 +170,27 @@ export async function searchDict(db: Db, query: string, limit = 25): Promise<Dic
   });
   const exact = await get(IDBKeyRange.only(q), limit);
   if (exact.length >= limit) return exact;
-  const prefix = await get(IDBKeyRange.bound(q, q + "￿"), limit + exact.length);
-  return [...exact, ...prefix.filter((e) => e.k !== q)].slice(0, limit);
+  const prefix = await get(IDBKeyRange.bound(q, q + "\uffff"), limit + exact.length);
+  const base = [...exact, ...prefix.filter((e) => e.k !== q)].slice(0, limit);
+  // An inflected form ("mangeons") leads to its base word ("manger"), with what kind of form it is.
+  const byForm = await new Promise<DictEntry[]>((res, rej) => {
+    const out: DictEntry[] = []; const r = db.idb.transaction("dict").objectStore("dict").index("f").openCursor(IDBKeyRange.only(q));
+    r.onsuccess = () => { const c = r.result; if (c && out.length < 8) { out.push(c.value); c.continue(); } else res(out); };
+    r.onerror = () => rej(r.error);
+  });
+  // Mark every result whose inflected forms contain the exact query (whether found by headword prefix or by the forms index).
+  const annotate = (e: DictEntry): DictEntry => {
+    if (e.k === q) return e;
+    const hit = (e.fm ?? []).find((f) => normalize(f.split("|")[0] ?? "") === q);
+    if (!hit) return e;
+    const [form = "", tags = ""] = hit.split("|");
+    return { ...e, matched: { form, tags } };
+  };
+  // De-duplicate by word + part of speech + first meaning: homographs ("livre": book m / pound f) must both survive.
+  const seen = new Set<string>(); const all: DictEntry[] = [];
+  for (const e of [...byForm, ...base]) { const key = `${e.w}|${e.p ?? ""}|${e.d[0]?.t ?? ""}`; if (!seen.has(key)) { seen.add(key); all.push(annotate(e)); } }
+  all.sort((a, b2) => Number(!!b2.matched) - Number(!!a.matched));   // "this is a form of …" answers first
+  return all.slice(0, limit + byForm.length);
 }
 
 /**
