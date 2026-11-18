@@ -36,6 +36,8 @@ jobs:
           node tools/build-pack.mjs --in /tmp/kaikki/french.jsonl --lang en --out public/dict --version "$(date -u +%Y-%m)" \
             --source "Wiktionary (English edition) via kaikki.org / Wiktextract" --license "CC BY-SA 4.0 and GFDL" --min-entries 20000 --max-mb 60
           ls -la public/dict && cat public/dict/manifest.json
+      - name: Verify the dictionary pack against well-known words
+        run: node tools/verify-pack.mjs public/dict "chat:m:cat,maison:f:house,être::be,avoir::have,aller::go,bonjour::hello,merci::thank,école:f:school,livre:m:book,eau:f:water,ville:f:city,pays:m:country,ami:m:friend,femme:f:woman,homme:m:man,temps:m:time,travail:m:work,langue:f:language,manger::eat,français::french"
       - run: npm run build
       - run: npx cap sync android
       - name: Build debug APK

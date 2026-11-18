@@ -232,3 +232,22 @@ describe("dictionary", () => {
     expect(convertEntry({ word: "ami", lang_code: "fr", head_templates: [{ expansion: "ami m (plural amis)" }], senses: [{ glosses: ["friend"] }] }, "en")!.g).toBe("m");
   });
 });
+
+import { verify } from "../tools/verify-pack.mjs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+describe("pack verifier (used in CI against the real downloaded data)", () => {
+  const dir = mkdtempSync(`${tmpdir()}/pack-`);
+  writeFileSync(`${dir}/fr-en.pack`, packBytes);
+  writeFileSync(`${dir}/manifest.json`, JSON.stringify(manifest({ file: "fr-en.pack" })));
+  it("passes when the well-known words are present with the right gender and meaning", () => {
+    const r = verify(dir, "chat:m:cat,maison:f:house,être::be,œuf:m:egg");
+    expect(r.problems).toEqual([]); expect(r.stats.entries).toBe(5);
+  });
+  it("fails on missing words, wrong gender, wrong meaning, and a tampered file", () => {
+    const r = verify(dir, "chat:f:cat,maison:f:castle,zzz");
+    expect(r.problems.join("|")).toMatch(/chat: expected gender f/); expect(r.problems.join("|")).toMatch(/maison: no meaning containing "castle"/); expect(r.problems.join("|")).toMatch(/missing word: zzz/);
+    writeFileSync(`${dir}/fr-en.pack`, Buffer.concat([packBytes, Buffer.from([0])]));
+    expect(verify(dir, "").problems.join("|")).toMatch(/size|sha256|Error/);
+  });
+});
