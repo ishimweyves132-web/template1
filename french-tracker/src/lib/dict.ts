@@ -17,6 +17,9 @@ export interface DictEntry {
   x?: { f: string; e?: string }[];               // example sentences
 }
 
+/** Multi-word headwords (idioms, expressions, compounds) are also kept in a separate store so the Phrasebook can search them. */
+export const isPhrase = (e: { w: string; p?: string }) => /\s/.test(e.w.trim()) && e.p !== "name";
+
 export function normalize(s: string): string {
   return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/œ/g, "oe").replace(/æ/g, "ae")
     .replace(/[’‘]/g, "'").trim().replace(/\s+/g, " ");
@@ -111,13 +114,13 @@ export async function installPack(db: Db, blob: Blob, manifest: Manifest, url: s
   const settings = await db.loadSettings();
   // Mark "not installed" while writing, so a crash mid-install can never leave a half dictionary in use.
   await db.saveSettings({ ...settings, dict: null });
-  await db.clear("dict");
-  let buf = "", n = 0, batch: DictEntry[] = [];
-  const flush = async () => { if (batch.length) { await db.putMany("dict", batch); n += batch.length; batch = []; onProgress({ phase: "install", done: n, total: manifest.count }); } };
+  await db.clear("dict"); await db.clear("phrases");
+  let buf = "", n = 0, batch: DictEntry[] = [], phr: DictEntry[] = [];
+  const flush = async () => { if (batch.length) { await db.putMany("dict", batch); if (phr.length) await db.putMany("phrases", phr); n += batch.length; batch = []; phr = []; onProgress({ phase: "install", done: n, total: manifest.count }); } };
   const take = (line: string) => {
     if (!line.trim()) return;
     const e = JSON.parse(line) as Omit<DictEntry, "k">;
-    batch.push({ ...e, k: normalize(e.w) });
+    const full = { ...e, k: normalize(e.w) }; batch.push(full); if (isPhrase(full)) phr.push(full);
   };
   try {
     for (;;) {
@@ -131,17 +134,17 @@ export async function installPack(db: Db, blob: Blob, manifest: Manifest, url: s
     }
     take(buf); await flush();
   } catch (e) {
-    await db.clear("dict");
+    await db.clear("dict"); await db.clear("phrases");
     throw new DictError(`The dictionary file could not be read: ${(e as Error).message}`);
   }
-  if (n !== manifest.count) { await db.clear("dict"); throw new DictError(`Entry count mismatch (${n} read, ${manifest.count} expected). Dictionary not installed.`); }
+  if (n !== manifest.count) { await db.clear("dict"); await db.clear("phrases"); throw new DictError(`Entry count mismatch (${n} read, ${manifest.count} expected). Dictionary not installed.`); }
   const meta: DictMeta = { installed: true, version: manifest.version, count: n, size: manifest.size, license: manifest.license, source: manifest.source, installedAt: Date.now(), url };
   await db.saveSettings({ ...(await db.loadSettings()), dict: meta });
   return meta;
 }
 
 export async function removeDictionary(db: Db) {
-  await db.clear("dict"); await db.delete("partial", "pack");
+  await db.clear("dict"); await db.clear("phrases"); await db.delete("partial", "pack");
   await db.saveSettings({ ...(await db.loadSettings()), dict: null });
 }
 
@@ -183,4 +186,35 @@ export async function installBundled(db: Db, manifestUrl: string, onProgress: (p
   onProgress({ phase: "verify", done: 0, total: 1 });
   if (blob.size !== manifest.size || (await sha256(blob)) !== manifest.sha256) throw new DictError("The bundled dictionary failed verification (checksum mismatch).");
   return installPack(db, blob, manifest, manifestUrl, onProgress);
+}
+
+/** Expressions from the installed dictionary: matches in the French text first (prefix, then contains), then in English meanings. */
+export async function searchPhraseDict(db: Db, query: string, limit = 30): Promise<DictEntry[]> {
+  const q = normalize(query), ql = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  const all = await new Promise<DictEntry[]>((res, rej) => {
+    const out: DictEntry[] = []; const req = db.idb.transaction("phrases").objectStore("phrases").openCursor();
+    req.onsuccess = () => {
+      const c = req.result; if (!c) return res(out);
+      const e = c.value as DictEntry;
+      const rank = e.k.startsWith(q) ? 0 : e.k.includes(q) ? 1 : ql.length >= 3 && e.d.some((d) => d.t.toLowerCase().includes(ql)) ? 2 : -1;
+      if (rank >= 0) out.push(Object.assign(e, { rank }) as DictEntry);
+      c.continue();
+    };
+    req.onerror = () => rej(req.error);
+  });
+  return all.sort((a, b) => ((a as any).rank - (b as any).rank) || a.w.length - b.w.length).slice(0, limit);
+}
+
+/** Dictionaries installed before the phrases store existed: fill it from the dictionary once. Returns how many phrases were found. */
+export async function rebuildPhrases(db: Db): Promise<number> {
+  if ((await db.count("phrases")) > 0 || (await db.count("dict")) === 0) return 0;
+  let n = 0, batch: DictEntry[] = [];
+  await new Promise<void>((res, rej) => {
+    const req = db.idb.transaction("dict").objectStore("dict").openCursor();
+    req.onsuccess = () => { const c = req.result; if (!c) return res(); if (isPhrase(c.value)) batch.push(c.value as DictEntry); c.continue(); };
+    req.onerror = () => rej(req.error);
+  });
+  for (let i = 0; i < batch.length; i += 2000) { await db.putMany("phrases", batch.slice(i, i + 2000)); n += Math.min(2000, batch.length - i); }
+  return n;
 }

@@ -3,7 +3,7 @@ import { defaultSettings, type Settings } from "./model";
 
 export const STORES = ["sessions", "marks", "vocab", "goals", "challenges", "snapshots"] as const;
 export type StoreName = (typeof STORES)[number];
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const wrap = <T,>(r: IDBRequest<T>) =>
   new Promise<T>((res, rej) => {
@@ -23,8 +23,10 @@ export class Db {
   static open(name = "french-mastery-tracker"): Promise<Db> {
     return new Promise((res, rej) => {
       const req = indexedDB.open(name, DB_VERSION);
-      req.onupgradeneeded = () => {
+      req.onupgradeneeded = (ev) => {
         const d = req.result;
+        if (ev.oldVersion >= 1) { d.createObjectStore("phrases", { autoIncrement: true }); return; } // v1 -> v2: add the phrases store only
+        d.createObjectStore("phrases", { autoIncrement: true });
         d.createObjectStore("sessions", { keyPath: "id" }).createIndex("date", "date");
         d.createObjectStore("marks", { keyPath: "key" });
         d.createObjectStore("vocab", { keyPath: "id" });

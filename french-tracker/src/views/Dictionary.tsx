@@ -3,7 +3,7 @@ import { useApp } from "../store";
 import { Card, Page, Meter, Empty, Segmented } from "../ui/kit";
 import { BUILTIN_WORD_COUNT, searchBuiltin, searchByMeaning, searchPhrases } from "../lib/builtin";
 import { PHRASE_CATEGORIES } from "../data/phrases";
-import { DictError, downloadPack, fetchManifest, normalize, removeDictionary, searchDict, type DictEntry, type DictProgress, type Manifest } from "../lib/dict";
+import { DictError, downloadPack, fetchManifest, normalize, rebuildPhrases, removeDictionary, searchDict, searchPhraseDict, type DictEntry, type DictProgress, type Manifest } from "../lib/dict";
 
 const mb = (b: number) => b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`;
 const POS: Record<string, string> = { det: "determiner", noun: "noun", verb: "verb", adj: "adjective", adv: "adverb", prep: "preposition", pron: "pronoun", conj: "conjunction", intj: "interjection", phrase: "phrase" };
@@ -43,9 +43,19 @@ export function Dictionary() {
 }
 
 function Phrasebook() {
-  const { vocab, saveVocab, notify } = useApp();
+  const { vocab, saveVocab, notify, db, settings } = useApp();
   const [q, setQ] = useState(""); const [cat, setCat] = useState("");
   const list = searchPhrases(q, cat);
+  const hasPack = !!settings.dict?.installed;
+  const [more, setMore] = useState<DictEntry[]>([]);
+  useEffect(() => { if (hasPack) void rebuildPhrases(db).catch(() => {}); }, [db, hasPack]);
+  useEffect(() => {
+    let live = true;
+    const id = setTimeout(() => { if (hasPack && q.trim().length >= 2 && !cat) void searchPhraseDict(db, q).then((r) => live && setMore(r)); else setMore([]); }, 150);
+    return () => { live = false; clearTimeout(id); };
+  }, [q, cat, db, hasPack]);
+  const builtIn = new Set(list.map((p) => normalize(p.fr)));
+  const extra = more.filter((e) => !builtIn.has(e.k));
   return (
     <>
       <input className="search" type="search" placeholder="Search phrases in French or English" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search phrases" />
@@ -53,8 +63,8 @@ function Phrasebook() {
         <button className={`chip ${cat === "" ? "on" : ""}`} onClick={() => setCat("")}>All</button>
         {PHRASE_CATEGORIES.map((c) => <button key={c} className={`chip ${cat === c ? "on" : ""}`} aria-pressed={cat === c} onClick={() => setCat(c)}>{c}</button>)}
       </div>
-      <p className="note pad">{list.length} phrase{list.length === 1 ? "" : "s"} · built in, works offline. Write-ups are original to this app.</p>
-      {list.length === 0 && <Card><Empty>No phrase matches “{q}”.</Empty></Card>}
+      {(list.length > 0 || !q.trim()) && <p className="note pad">{list.length} phrase{list.length === 1 ? "" : "s"} · built in, works offline. Write-ups are original to this app.</p>}
+      {list.length === 0 && extra.length === 0 && <Card><Empty>No phrase matches “{q}”.{!hasPack && " The full dictionary adds many thousands of expressions."}</Empty></Card>}
       {list.map((p) => {
         const saved = vocab.some((v) => normalize(v.fr) === normalize(p.fr));
         return (
@@ -64,6 +74,20 @@ function Phrasebook() {
             {p.note && <p className="muted small">{p.note}</p>}
             <div className="sess"><span className="tag">{p.cat}</span><span className="grow" />
               {saved ? <span className="pill done">Saved</span> : <button className="btn small" onClick={() => saveVocab({ fr: p.fr, en: p.en, notes: p.note, source: "dictionary" }).then(() => notify("Phrase saved to vocabulary"))}>＋ Save</button>}</div>
+          </Card>
+        );
+      })}
+      {extra.length > 0 && <p className="note pad">From the full dictionary ({extra.length}{more.length >= 30 ? "+" : ""} expression{extra.length === 1 && more.length < 30 ? "" : "s"}):</p>}
+      {extra.map((e) => {
+        const first = e.d[0]?.t ?? ""; const saved = vocab.some((v) => normalize(v.fr) === e.k);
+        return (
+          <Card key={e.w + first} className="phrase alt">
+            <p className="pfr" lang="fr">{e.w}</p>
+            <p>{e.d.slice(0, 3).map((d) => d.t).join(" · ")}</p>
+            <p className="muted small">{[e.p && (POS[e.p] ?? e.p), e.g && GENDER[e.g]].filter(Boolean).join(" · ")}</p>
+            {e.x?.[0] && <p className="ex" lang="fr">“{e.x[0].f}”{e.x[0].e && <span className="muted"> — {e.x[0].e}</span>}</p>}
+            <div className="sess"><span className="tag">Dictionary</span><span className="grow" />
+              {saved ? <span className="pill done">Saved</span> : <button className="btn small" onClick={() => saveVocab({ fr: e.w, en: first, example: e.x?.[0]?.f ?? "", source: "dictionary" }).then(() => notify("Expression saved to vocabulary"))}>＋ Save</button>}</div>
           </Card>
         );
       })}

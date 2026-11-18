@@ -4,7 +4,7 @@ import { gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { Db } from "../src/lib/db";
 import { createBackup, restoreBackup, takeSnapshot, validateBackup } from "../src/lib/backup";
-import { DictError, downloadPack, installBundled, installPack, normalize, removeDictionary, searchDict, type Manifest } from "../src/lib/dict";
+import { DictError, downloadPack, installBundled, installPack, isPhrase, rebuildPhrases, searchPhraseDict, normalize, removeDictionary, searchDict, type Manifest } from "../src/lib/dict";
 import { defaultSettings, uid, type VocabEntry } from "../src/lib/model";
 import { convertEntry } from "../tools/build-pack.mjs";
 import { s } from "./helpers";
@@ -249,5 +249,53 @@ describe("pack verifier (used in CI against the real downloaded data)", () => {
     expect(r.problems.join("|")).toMatch(/chat: expected gender f/); expect(r.problems.join("|")).toMatch(/maison: no meaning containing "castle"/); expect(r.problems.join("|")).toMatch(/missing word: zzz/);
     writeFileSync(`${dir}/fr-en.pack`, Buffer.concat([packBytes, Buffer.from([0])]));
     expect(verify(dir, "").problems.join("|")).toMatch(/size|sha256|Error/);
+  });
+});
+
+
+describe("dictionary phrases (multi-word entries)", () => {
+  const entries = [
+    { w: "avoir hâte", p: "verb", d: [{ t: "to look forward to", l: "en" }], x: [{ f: "J'ai hâte de partir.", e: "I can't wait to leave." }] },
+    { w: "pomme de terre", p: "noun", g: "f", d: [{ t: "potato", l: "en" }] },
+    { w: "du coup", p: "adv", d: [{ t: "so; as a result", l: "en" }] },
+    { w: "Jean Dupont", p: "name", d: [{ t: "a common name", l: "en" }] },   // proper noun: not a phrase
+    { w: "chat", p: "noun", g: "m", d: [{ t: "cat", l: "en" }] },
+  ];
+  const bytes = gzipSync(Buffer.from(entries.map((e) => JSON.stringify(e)).join("\n") + "\n"));
+  const man = (): Manifest => ({ version: "p", file: "x.pack", size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), count: entries.length, license: "t", source: "t" });
+  it("classifies multi-word headwords as phrases, but not single words or proper names", () => {
+    expect(entries.filter(isPhrase).map((e) => e.w)).toEqual(["avoir hâte", "pomme de terre", "du coup"]);
+  });
+  it("install fills the phrases store; search matches French (prefix/contains) and English meanings, accent-insensitive", async () => {
+    const db = await open(); await installPack(db, new Blob([bytes]), man(), "u");
+    expect(await db.count("phrases")).toBe(3);
+    expect((await searchPhraseDict(db, "avoir hate"))[0]!.w).toBe("avoir hâte");          // accent-insensitive
+    expect((await searchPhraseDict(db, "terre")).map((e) => e.w)).toEqual(["pomme de terre"]); // contains
+    expect((await searchPhraseDict(db, "look forward"))[0]!.w).toBe("avoir hâte");          // by English meaning
+    expect((await searchPhraseDict(db, "potato"))[0]!.w).toBe("pomme de terre");
+    expect(await searchPhraseDict(db, "jean")).toEqual([]); expect(await searchPhraseDict(db, "a")).toEqual([]);
+    expect(await searchPhraseDict(db, "chat")).toEqual([]);                                   // single words are not phrases
+  });
+  it("removing the dictionary removes its phrases too", async () => {
+    const db = await open(); await installPack(db, new Blob([bytes]), man(), "u"); await removeDictionary(db);
+    expect(await db.count("phrases")).toBe(0);
+  });
+  it("upgrades an existing v1 database without losing data, and rebuilds phrases from the installed dictionary", async () => {
+    const name = `v1-${Math.random()}`;
+    await new Promise<void>((res, rej) => {   // a database exactly as the previous app version created it
+      const r = indexedDB.open(name, 1);
+      r.onupgradeneeded = () => { const d = r.result; d.createObjectStore("sessions", { keyPath: "id" }).createIndex("date", "date"); for (const s of ["marks", "vocab", "goals", "challenges", "snapshots", "kv"]) d.createObjectStore(s, { keyPath: s === "marks" ? "key" : s === "kv" ? "key" : "id" }); d.createObjectStore("dict", { autoIncrement: true }).createIndex("k", "k"); d.createObjectStore("partial", { keyPath: "key" }); };
+      r.onsuccess = () => { const d = r.result; const tx = d.transaction(["sessions", "dict"], "readwrite");
+        tx.objectStore("sessions").put({ id: "keep", date: "2026-11-01", activity: "reading", minutes: 7 });
+        tx.objectStore("dict").put({ k: "pomme de terre", w: "pomme de terre", p: "noun", d: [{ t: "potato", l: "en" }] });
+        tx.objectStore("dict").put({ k: "chat", w: "chat", p: "noun", d: [{ t: "cat", l: "en" }] });
+        tx.oncomplete = () => { d.close(); res(); }; tx.onerror = () => rej(tx.error); }; r.onerror = () => rej(r.error);
+    });
+    const db = await Db.open(name);
+    expect((await db.getAll<any>("sessions"))[0].minutes).toBe(7);          // data survived the upgrade
+    expect(await db.count("phrases")).toBe(0);
+    expect(await rebuildPhrases(db)).toBe(1);                               // only the multi-word entry
+    expect((await searchPhraseDict(db, "potato"))[0]!.w).toBe("pomme de terre");
+    expect(await rebuildPhrases(db)).toBe(0);                               // idempotent
   });
 });

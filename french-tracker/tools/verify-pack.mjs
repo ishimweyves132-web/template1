@@ -30,6 +30,8 @@ export function verify(dir, spec) {
     entries: entries.length, distinctWords: by.size,
     nounsWithGenderPct: nouns.length ? Math.round((nouns.filter((e) => e.g).length / nouns.length) * 100) : 0,
     withExamplesPct: Math.round((entries.filter((e) => e.x?.length).length / entries.length) * 100),
+    multiWordEntries: entries.filter((e) => /\s/.test(e.w) && e.p !== "name").length,
+    phraseTypePos: Object.fromEntries(Object.entries(pos).filter(([k]) => /phrase|proverb|prov/.test(k))),
     withIpaPct: Math.round((entries.filter((e) => e.ipa).length / entries.length) * 100),
     topPos: Object.entries(pos).sort((a, b) => b[1] - a[1]).slice(0, 6),
   };

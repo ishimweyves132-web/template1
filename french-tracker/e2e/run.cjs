@@ -290,12 +290,22 @@ const has = (page, s, sel = "main") => page.waitForFunction(([q, x]) => document
     eq(await page.locator("button", { hasText: /^Download/ }).count(), 1);
     await page.locator("button", { hasText: /^Download/ }).click();
     await page.waitForSelector("text=Full dictionary", { timeout: 15000 });
-    ok((await text(page)).includes("9 entries"), "9 French entries (non-French ignored): " + (await text(page)).slice(0, 300));
+    ok((await text(page)).includes("12 entries"), "12 French entries (non-French ignored): " + (await text(page)).slice(0, 300));
+  });
+
+  await test("phrasebook: expressions from the installed dictionary are searchable (French, English meaning, accents optional)", async () => {
+    await nav(page, "#/more/dictionary"); await page.getByRole("tab", { name: "Phrasebook" }).click();
+    await page.getByLabel("Search phrases").fill("look forward"); await has(page, "From the full dictionary"); await has(page, "avoir hâte");
+    await page.getByLabel("Search phrases").fill("pomme de"); await has(page, "pomme de terre");
+    await page.getByLabel("Search phrases").fill("avoir hate"); await has(page, "avoir hâte");
+    await page.getByLabel("Search phrases").fill("dupont"); await has(page, "No phrase matches");
+    await page.getByLabel("Search phrases").fill("potato"); await has(page, "pomme de terre");
+    await page.locator(".phrase.alt").getByRole("button", { name: "＋ Save" }).first().click(); await has(page, "Saved");
   });
 
   await test("dictionary: search works with the network switched OFF (accents optional, gender, IPA, example, EN gloss)", async () => {
     await ctx.setOffline(true);
-    await nav(page, "#/more/dictionary");
+    await nav(page, "#/more/dictionary"); await page.getByRole("tab", { name: "Words" }).click();
     await page.getByLabel("Search the dictionary").fill("chateau"); await has(page, "castle");
     let t = await text(page); ok(t.includes("château") && t.includes("masculine") && t.includes("castle"), "château: " + t.slice(0, 200));
     await page.getByLabel("Search the dictionary").fill("chat");

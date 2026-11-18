@@ -8,3 +8,6 @@
 {"word":"livre","lang_code":"fr","pos":"noun","senses":[{"glosses":["pound (unit of weight)"],"tags":["feminine"]}]}
 {"word":"école","lang_code":"fr","pos":"noun","senses":[{"glosses":["school"],"tags":["feminine"]}]}
 {"word":"ignored","lang_code":"en","pos":"noun","senses":[{"glosses":["not a French entry"]}]}
+{"word":"avoir hâte","lang_code":"fr","pos":"verb","senses":[{"glosses":["to look forward to"],"examples":[{"text":"J'ai hâte de partir.","english":"I can't wait to leave."}]}]}
+{"word":"pomme de terre","lang_code":"fr","pos":"noun","senses":[{"glosses":["potato"],"tags":["feminine"]}]}
+{"word":"Jean Dupont","lang_code":"fr","pos":"name","senses":[{"glosses":["a common name"]}]}
