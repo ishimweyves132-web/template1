@@ -51,7 +51,7 @@ describe("coach", () => {
     const i = base(); i.objectives = [obj({ start: "2026-11-01", target: "2026-12-31" })];
     i.krs = [{ id: "k", objectiveId: "o1", title: "k", type: "numeric", direction: "up", baseline: 0, target: 10, unit: "", currency: "", createdAt: 0 }]; i.points = [{ id: "p", krId: "k", date: "2026-11-20", value: 8, note: "", createdAt: 0 }];
     i.executions = [exec({ date: "2026-11-22" })]; i.occurrences = [occ("a", TODAY, "planned")]; i.sessions = [{ id: "s", occId: "a", date: TODAY, startMin: 600, endMin: 660, state: "approved", reason: "", createdAt: 0 }];
-    const r = analyze(i); expect(r.filter((x) => x.level === "attention")).toEqual([]); expect(r.some((x) => x.id === "ahead-o1")).toBe(true);
+    const r = analyze(i); expect(r.filter((x) => x.level === "attention")).toEqual([]); expect(r.some((x) => x.id === "ahead")).toBe(true);
   });
   it("outcome 'behind' is reported separately from execution (high execution, low outcome)", () => {
     const i = base(); i.objectives = [obj({ start: "2026-01-01", target: "2026-12-31" })];

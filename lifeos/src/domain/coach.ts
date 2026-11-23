@@ -28,14 +28,16 @@ export function analyze(i: CoachInput): Insight[] {
     if (!tids.size) continue;
     const last = i.executions.filter((e) => tids.has(e.taskId) && e.outcome !== "skipped").map((e) => e.date).sort().pop();
     const idle = last ? diffDays(last, i.today) : null;
-    if (idle === null ? diffDays(o.start, i.today) > 7 : idle >= 14) out.push({ id: `neglected-${o.id}`, level: "attention", title: `“${o.title}” has had no work for ${idle === null ? "its whole time" : idle + " days"}`, detail: "It has tasks but nothing recorded recently. Schedule one small step, or pause the objective deliberately.", action: "open-vision", objectiveId: o.id });
+    if (idle === null ? diffDays(o.start, i.today) > 7 : idle >= 14) out.push({ id: `neglected-${o.id}`, level: "attention", title: `“${o.title}” ${idle === null ? "has no recorded work yet" : `has had no work for ${idle} days`}`, detail: "It has tasks but nothing recorded recently. Schedule one small step, or pause the objective deliberately.", action: "open-vision", objectiveId: o.id });
   }
   // 5. Outcome pace (separate from execution)
+  const aheads: Objective[] = [];
   for (const o of i.objectives.filter((x) => x.status === "active")) {
     const oc: Outcome = objectiveOutcome(o, i.objectives, i.krs, i.points); const p: Pace = pace(o, oc, i.today);
     if (p === "behind" || p === "at-risk") out.push({ id: `pace-${o.id}`, level: "attention", title: `“${o.title}” is ${p === "at-risk" ? "at risk" : "behind"} on outcome`, detail: `${Math.round((oc.fraction ?? 0) * 100)}% of the result with ${Math.round((diffDays(o.start, i.today) / Math.max(1, diffDays(o.start, o.target))) * 100)}% of the time used. Doing the tasks is not the same as getting the result; revisit the strategy, not only the schedule.`, action: "open-vision", objectiveId: o.id });
-    else if (p === "ahead") out.push({ id: `ahead-${o.id}`, level: "good", title: `“${o.title}” is ahead of pace`, detail: `${Math.round((oc.fraction ?? 0) * 100)}% of the result so far.`, objectiveId: o.id });
+    else if (p === "ahead") aheads.push(o);
   }
+  if (aheads.length) out.push({ id: "ahead", level: "good", title: `${aheads.length} objective${aheads.length === 1 ? " is" : "s are"} ahead of pace`, detail: aheads.slice(0, 3).map((o) => `“${o.title}”`).join(", ") + (aheads.length > 3 ? ` and ${aheads.length - 3} more` : "") + ". Outcome is measured against the time used, not against tasks done.", objectiveId: aheads[0]!.id });
   // 6. Unmeasured active objectives
   const unmeasured = i.objectives.filter((o) => o.status === "active" && objectiveOutcome(o, i.objectives, i.krs, i.points).fraction === null);
   if (unmeasured.length) out.push({ id: "unmeasured", level: "note", title: `${unmeasured.length} active objective${unmeasured.length === 1 ? " has" : "s have"} no measurable result`, detail: `Add a key result so progress can be judged by outcome: ${unmeasured.slice(0, 3).map((o) => `“${o.title}”`).join(", ")}.`, action: "open-vision" });
