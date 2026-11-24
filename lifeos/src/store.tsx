@@ -1,14 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Db, DATA_STORES, type StoreName } from "./lib/db";
 import { addDays, nowMin, todayStr, type DateStr } from "./lib/dates";
-import { defaultSettings, uid, type AiAudit, type Area, type Change, type Commitment, type Evidence, type Execution, type Habit, type HabitLog, type KeyResult, type KrPoint, type Objective, type Occurrence, type Review, type Session, type Settings, type Task, type Vision } from "./lib/model";
+import { defaultSettings, uid, type AiRun, type ChatMsg, type AiAudit, type Area, type Change, type Commitment, type Evidence, type Execution, type Habit, type HabitLog, type KeyResult, type KrPoint, type Objective, type Occurrence, type Review, type Session, type Settings, type Task, type Vision } from "./lib/model";
 import { approvePlacements, completeOccurrence, missingOccurrences, settleMissed, toggleHabit, type CompleteInput } from "./domain/ops";
 import { recoverMissed, undoChange, type Recovery } from "./domain/reschedule";
 import { proposeSchedule, type Busy, type Context, type Placement, type Unplaced } from "./domain/scheduler";
 import { takeSnapshot } from "./lib/backup";
 import { demoData } from "./lib/demo";
 
-export interface Data { vision: Vision[]; areas: Area[]; objectives: Objective[]; krs: KeyResult[]; krPoints: KrPoint[]; tasks: Task[]; occurrences: Occurrence[]; sessions: Session[]; executions: Execution[]; habits: Habit[]; habitLogs: HabitLog[]; evidence: Evidence[]; commitments: Commitment[]; reviews: Review[]; changes: Change[]; aiAudit: AiAudit[] }
+export interface Data { vision: Vision[]; areas: Area[]; objectives: Objective[]; krs: KeyResult[]; krPoints: KrPoint[]; tasks: Task[]; occurrences: Occurrence[]; sessions: Session[]; executions: Execution[]; habits: Habit[]; habitLogs: HabitLog[]; evidence: Evidence[]; commitments: Commitment[]; reviews: Review[]; changes: Change[]; aiAudit: AiAudit[]; chat: ChatMsg[]; aiRuns: AiRun[] }
 const empty = (): Data => Object.fromEntries(DATA_STORES.map((s) => [s, []])) as unknown as Data;
 export interface FocusState { occId: string; startedAt: number }
 type Writes = { put?: { [K in StoreName]?: Data[K] }; del?: Partial<Record<StoreName, string[]>> };

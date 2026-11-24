@@ -1,10 +1,10 @@
 // IndexedDB wrapper. The local database is the source of truth; every write is a single transaction.
 import { defaultSettings, type Settings } from "./model";
 
-export const DATA_STORES = ["vision", "areas", "objectives", "krs", "krPoints", "tasks", "occurrences", "sessions", "executions", "habits", "habitLogs", "evidence", "commitments", "reviews", "changes", "aiAudit"] as const;
+export const DATA_STORES = ["vision", "areas", "objectives", "krs", "krPoints", "tasks", "occurrences", "sessions", "executions", "habits", "habitLogs", "evidence", "commitments", "reviews", "changes", "aiAudit", "chat", "aiRuns"] as const;
 export type StoreName = (typeof DATA_STORES)[number];
 const ALL = [...DATA_STORES, "snapshots", "kv", "files"] as const;   // "files" holds attachment blobs
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const wrap = <T,>(r: IDBRequest<T>) => new Promise<T>((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 const done = (tx: IDBTransaction) => new Promise<void>((res, rej) => { tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error ?? new Error("Transaction aborted")); });
 

@@ -54,10 +54,14 @@ export interface Change {
   before: { date: DateStr; startMin: number; endMin: number } | null; after: { date: DateStr; startMin: number; endMin: number } | null;
   beforeOccDate: DateStr; afterOccDate: DateStr; sessionId: string | null; undone: boolean; createdAt: number;
 }
+export interface ChatMsg { id: string; role: "user" | "assistant"; text: string; at: number; runId: string | null }
+export interface UndoEntry { store: string; id: string; prev: unknown | null }
+export interface AiAction { tool: string; args: unknown; ok: boolean; summary: string }
+export interface AiRun { id: string; at: number; prompt: string; actions: AiAction[]; undo: UndoEntry[]; undone: boolean }
 export interface AiAudit { id: string; at: number; provider: string; request: string; proposal: string; validation: "accepted" | "rejected"; reasons: string[]; approval: "pending" | "approved" | "declined" | "n/a" }
 export interface Settings {
-  aiProvider: "gemini" | "gateway"; geminiModel: string;
+  aiProvider: "gemini" | "gateway"; geminiModel: string; aiConsent: boolean;
   rules: Rules; theme: "system" | "light" | "dark"; aiGatewayUrl: string; aiEnabled: boolean; lastBackupAt: number | null;
   remindersEnabled: boolean; reminderLeadMin: number; onboarded: boolean;
 }
-export const defaultSettings = (): Settings => ({ aiProvider: "gemini", geminiModel: "", rules: defaultRules(), theme: "system", aiGatewayUrl: "", aiEnabled: false, lastBackupAt: null, remindersEnabled: false, reminderLeadMin: 10, onboarded: false });
+export const defaultSettings = (): Settings => ({ aiProvider: "gemini", geminiModel: "", aiConsent: false, rules: defaultRules(), theme: "system", aiGatewayUrl: "", aiEnabled: false, lastBackupAt: null, remindersEnabled: false, reminderLeadMin: 10, onboarded: false });

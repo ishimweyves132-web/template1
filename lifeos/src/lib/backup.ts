@@ -24,7 +24,8 @@ export async function validateBackup(raw: unknown): Promise<BackupFile> {
   if (f.version !== 1) throw new Error(`Unsupported backup version ${String((f as { version?: unknown }).version)}.`);
   if (!f.data || typeof f.data !== "object" || !f.settings) throw new Error("Backup has no data.");
   if ((await digestOf(f)) !== f.checksum) throw new Error("Backup is damaged: the checksum does not match. Nothing was changed.");
-  for (const s of DATA_STORES) if (!Array.isArray(f.data[s])) throw new Error(`Backup is missing "${s}".`);
+  const OPTIONAL = new Set(["chat", "aiRuns"]);   // added in a later version: older backups simply have none
+  for (const s of DATA_STORES) { if (f.data[s] === undefined && OPTIONAL.has(s)) f.data[s] = []; if (!Array.isArray(f.data[s])) throw new Error(`Backup is missing "${s}".`); }
   for (const s of DATA_STORES) for (const r of f.data[s]!) if (!r || typeof (r as { id?: unknown }).id !== "string") throw new Error(`Backup contains an invalid record in "${s}". Nothing was changed.`);
   if (f.attachments !== undefined) { if (!Array.isArray(f.attachments) || f.attachments.some((a) => !a || typeof a.id !== "string" || typeof a.b64 !== "string" || typeof a.name !== "string")) throw new Error("Backup contains an invalid attachment. Nothing was changed."); }
   return f;

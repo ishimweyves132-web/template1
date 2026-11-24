@@ -42,3 +42,18 @@ export async function geminiJson(args: { key: string; model: string; system: str
   const unfenced = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   try { return JSON.parse(unfenced); } catch { throw new Error("Gemini's answer was not valid JSON, so it was ignored."); }
 }
+
+// ---------- function calling (the autonomous assistant) ----------
+export interface GPart { text?: string; functionCall?: { name: string; args?: Record<string, unknown> }; functionResponse?: { name: string; response: Record<string, unknown> }; [k: string]: unknown }
+export interface GContent { role: "user" | "model"; parts: GPart[] }
+/** One tool-enabled turn. The model's content is returned untouched: it must be sent back verbatim (it can carry signatures the API checks). */
+export async function geminiChat(args: { key: string; model: string; system: string; contents: GContent[]; tools: { name: string; description: string; parameters: unknown }[]; fetchImpl?: F; timeoutMs?: number }): Promise<GContent> {
+  const { key, model, system, contents, tools, fetchImpl = fetch, timeoutMs = 90000 } = args;
+  if (!/^[a-z0-9.\-]+$/i.test(model)) throw new Error("Choose a model in Settings first.");
+  const body = (await call(`${GEMINI_BASE}/models/${model}:generateContent`, key, { method: "POST", body: JSON.stringify({
+    systemInstruction: { parts: [{ text: system }] }, contents, tools: [{ functionDeclarations: tools }], generationConfig: { temperature: 0.4 },
+  }) }, fetchImpl, timeoutMs)) as { candidates?: { content?: GContent; finishReason?: string }[]; promptFeedback?: { blockReason?: string } };
+  if (body.promptFeedback?.blockReason) throw new Error(`Gemini declined this request (${body.promptFeedback.blockReason.toLowerCase()}).`);
+  const c = body.candidates?.[0]?.content; if (!c || !Array.isArray(c.parts) || !c.parts.length) throw new Error("Gemini returned no answer. Try rephrasing.");
+  return { role: "model", parts: c.parts };
+}
