@@ -61,7 +61,8 @@ export async function runAgent(prompt: string, history: ChatMsg[], deps: RunDeps
   const decls = TOOLS.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
   let calls = 0; let reply = "";
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const out = await deps.model(SYSTEM_PROMPT, contents); contents.push(out);
+    let out: GContent; try { out = await deps.model(SYSTEM_PROMPT, contents); } catch (e) { reply = `⚠ ${(e as Error).message}${run.actions.some((a) => a.ok) ? " Changes made before this are listed below and can be undone." : " Nothing was changed."}`; break; }
+    contents.push(out);
     const fcs = out.parts.filter((p) => p.functionCall); const text = out.parts.map((p) => p.text ?? "").join("").trim();
     if (!fcs.length) { reply = text; break; }
     const responses: GPart[] = [];

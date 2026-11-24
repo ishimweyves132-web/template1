@@ -116,7 +116,7 @@ const idb = (page, fn, arg) => page.evaluate(([src, a]) => new Promise((res, rej
   });
 
   await test("coach: plain, rule-based observations; AI gateway answers are validated — forbidden powers rejected, good proposals applied only after approval", async () => {
-    await nav(page, "#/coach"); await has(page, "What the coach sees"); await has(page, "What the coach may and may not do");
+    await nav(page, "#/coach"); await has(page, "What the coach sees"); await has(page, "Rule-based coach");
     await nav(page, "#/settings"); await page.locator('select:has(option[value="gateway"])').selectOption("gateway"); await page.getByLabel("Your gateway address").fill("https://gw.test/plan"); await page.getByLabel("Your gateway address").blur();
     const occId = await idb(page, (db) => new Promise((res) => { const r = db.transaction("occurrences").objectStore("occurrences").getAll(); r.onsuccess = () => res(r.result.filter((o) => o.status === "planned").map((o) => [o.id, o.taskId])); }));
     const t0 = occId.find((x) => x[1] === "late") ?? occId[0];
@@ -153,11 +153,15 @@ const idb = (page, fn, arg) => page.evaluate(([src, a]) => new Promise((res, rej
   });
 
   await test("Gemini key: saved encrypted, key travels only in a header, models are loaded for your key, and it never reaches a backup", async () => {
-    const KEY = "AIzaSyFAKEKEYFORTESTING0123456789abcd"; const calls = [];
+    const KEY = "AIzaSyFAKEKEYFORTESTING0123456789abcd"; const calls = []; const agentReqs = [];
     await ctx.route("https://generativelanguage.googleapis.com/**", async (route) => { const rq = route.request(); calls.push({ url: rq.url(), key: rq.headers()["x-goog-api-key"], method: rq.method(), body: rq.postData() });
       const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*" }; if (rq.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
       if (rq.url().includes("/models?")) return route.fulfill({ status: 200, contentType: "application/json", headers: cors, body: JSON.stringify({ models: [{ name: "models/gemini-2.5-pro", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] }, { name: "models/embedding-001", supportedGenerationMethods: ["embedContent"] }] }) });
-      const parent = JSON.parse(rq.postData() || "{}").contents?.[0]?.parts?.[0]?.text ?? ""; const pid = (/"objective":\{"id":"([^"]+)"/.exec(parent) || [])[1] ?? "x";
+      const reqBody = JSON.parse(rq.postData() || "{}");
+      if (reqBody.tools) { agentReqs.push(reqBody); const last = reqBody.contents[reqBody.contents.length - 1]; const mk = (parts) => route.fulfill({ status: 200, contentType: "application/json", headers: cors, body: JSON.stringify({ candidates: [{ content: { role: "model", parts } }] }) });
+        if (last.parts[0].functionResponse) return mk([{ text: "Done. I added the goal and a task for today." }]);
+        return mk([{ functionCall: { name: "create_objective", args: { title: "Read 12 books", level: "annual", areaName: "Mind" } }, thoughtSignature: "SIG1" }, { functionCall: { name: "create_task", args: { title: "Read 20 pages", estimateMin: 30, onDate: addD(0) } } }, { functionCall: { name: "create_task", args: { title: "Bad one", estimateMin: 99999 } } }]); }
+      const parent = reqBody.contents?.[0]?.parts?.[0]?.text ?? ""; const pid = (/"objective":\{"id":"([^"]+)"/.exec(parent) || [])[1] ?? "x";
       return route.fulfill({ status: 200, contentType: "application/json", headers: cors, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ operations: [
         { op: "propose_objective", parentId: pid, title: "Finish the A2 workbook", why: "Foundation", start: addD(1), target: addD(60) },
         { op: "propose_objective", parentId: pid, title: "Way too long", why: "x", start: addD(1), target: "2099-01-01" },
@@ -180,7 +184,23 @@ const idb = (page, fn, arg) => page.evaluate(([src, a]) => new Promise((res, rej
     const objs = await idb(page, (db) => new Promise((res) => { const r = db.transaction("objectives").objectStore("objectives").getAll(); r.onsuccess = () => res(r.result.filter((o) => o.title === "Finish the A2 workbook").map((o) => [o.status, o.level])); })); eq(objs, [["draft", "quarterly"]], "created as a DRAFT at the correct child level");
     const bk = await idb(page, async () => 1); void bk; await nav(page, "#/settings"); const [bdl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export backup" }).click()]); const bp = path.join(out, "with-key.json"); await bdl.saveAs(bp);
     const btxt = fs.readFileSync(bp, "utf8"); ok(!btxt.includes(KEY) && !btxt.includes("aiKey") && !btxt.includes("deviceKey"), "backup contains no key material");
-    page.once("dialog", (d) => d.accept()); await page.getByRole("button", { name: "Remove key" }).click(); await has(page, "Paste your Gemini API key"); await ctx.unroute("https://generativelanguage.googleapis.com/**");
+    // autonomous assistant: consent gate, full data sent, tools executed WITHOUT approval, partial failure reported, exact undo
+    await nav(page, "#/coach"); await has(page, "Set up your assistant"); ok(!(await page.locator("main").innerText()).includes("Send"), "no chat before consent");
+    await page.getByLabel(/I understand that while I use the assistant/).click(); await has(page, "Ask or tell your assistant");
+    const cnt = () => 0;
+    const names = () => idb(page, (db) => new Promise((res) => { const r = db.transaction("tasks").objectStore("tasks").getAll(); r.onsuccess = () => res(r.result.map((t) => t.title)); }));
+    const tasksBefore = await names(); const objsBefore = await idb(page, (db) => new Promise((res) => { const r = db.transaction("objectives").objectStore("objectives").getAll(); r.onsuccess = () => res(r.result.length); }));
+    await page.getByLabel("Ask or tell your assistant").fill("Add a goal to read 12 books and a task for today"); await page.getByRole("button", { name: "Send" }).click(); await has(page, "I added the goal and a task for today");
+    const t2 = await names(); ok(t2.includes("Read 20 pages") && !t2.includes("Bad one") && t2.length === tasksBefore.length + 1, "task created directly, invalid call rejected: " + JSON.stringify(t2));
+    const objs2 = await idb(page, (db) => new Promise((res) => { const r = db.transaction("objectives").objectStore("objectives").getAll(); r.onsuccess = () => res(r.result.filter((o) => o.title === "Read 12 books").map((o) => [o.level, o.status])); })); eq(objs2, [["annual", "active"]], "objective created active, no approval step");
+    const atxt = await page.locator("main").innerText(); ok(/2 changes, 1 failed/.test(atxt) && /estimateMin/.test(atxt), "partial failure shown honestly: " + atxt.slice(-500));
+    const first = agentReqs[0]; ok(first.contents[first.contents.length - 1].parts[0].text.includes("Pass the DELF B1 exam"), "model received the user's full data"); ok(first.tools[0].functionDeclarations.length >= 20, "tools declared");
+    const second = agentReqs[1]; ok(JSON.stringify(second.contents).includes("SIG1"), "model turn sent back verbatim (signature kept)");
+    await page.screenshot({ path: path.join(out, "08-assistant.png"), fullPage: true });
+    page.once("dialog", (d) => d.accept()); await page.getByRole("button", { name: "Undo this request" }).click(); await has(page, "Undone");
+    const t3 = await names(); eq(t3.length, tasksBefore.length, "undo removed the task"); const objs3 = await idb(page, (db) => new Promise((res) => { const r = db.transaction("objectives").objectStore("objectives").getAll(); r.onsuccess = () => res(r.result.length); })); eq(objs3, objsBefore, "undo removed the objective");
+    await page.reload(); await nav(page, "#/coach"); await has(page, "Undone"); void cnt;
+    await nav(page, "#/settings"); page.once("dialog", (d) => d.accept()); await page.getByRole("button", { name: "Remove key" }).click(); await has(page, "Paste your Gemini API key"); await ctx.unroute("https://generativelanguage.googleapis.com/**");
   });
 
   await test("in-app calendar: edit and delete a commitment, conflicts are flagged, unschedule/undo, moves obey the rules", async () => {

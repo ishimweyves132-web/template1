@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useApp } from "../store";
 import { Card, Empty, PageHead } from "../ui/kit";
 import { PlanSheet } from "./sheets";
+import { Assistant } from "./Assistant";
 import { AiResult, useAiRun, type AiRun } from "./ai";
 import { addDays, range } from "../lib/dates";
 import { analyze } from "../domain/coach";
@@ -28,25 +29,26 @@ export function Coach() {
   };
   return (
     <div>
-      <PageHead title="Coach" sub="Plain observations from your own records. It suggests; you decide." right={<button className="btn primary" onClick={() => setPlan(true)}>Plan my next 7 days</button>} />
+      <PageHead title="Assistant" sub="Ask in plain words. It knows your whole plan and does the work for you." right={<button className="btn primary" onClick={() => setPlan(true)}>Plan my next 7 days</button>} />
       <div className="cols">
         <Card title="What the coach sees">
           {insights.length === 0 ? <Empty>Nothing needs attention. Your plan is consistent with your own rules.</Empty> : insights.map((i) => <div key={i.id} className={`insight ${i.level}`}><b>{i.title}</b><p className="small muted">{i.detail}</p>{i.action && <button className="btn small" onClick={() => go(i.action)}>{{ "plan-week": "Plan the week", recover: "Recover within my rules", "open-vision": "Open Vision", "open-planner": "Open Planner" }[i.action]}</button>}</div>)}
           {rec && rec.needsApproval.length > 0 && <div className="insight attention"><b>Needs your decision</b>{rec.needsApproval.map((n) => <p key={n.occId} className="small">{taskName(occurrences.find((o) => o.id === n.occId)?.taskId ?? "")}: {n.reason}</p>)}</div>}
         </Card>
         <div>
-          <Card title="What the coach may and may not do">
-            <p className="small"><b>May:</b> suggest tasks, times and sub-goals, flag overload, point out neglected goals, move eligible missed tasks inside the rules you set.</p>
-            <p className="small"><b>May not:</b> change your vision, goals, targets or deadlines; delete anything; mark work done; move calendar events or protected tasks; change its own permissions.</p>
+          {settings.aiProvider === "gemini" && <Assistant />}
+          <Card title="Rule-based coach (no AI needed)">
+            <p className="small">The observations on the left come from your own records, without AI. It can move eligible missed tasks inside the rules you set.</p>
+            
             <p className="small muted">Every automatic move appears under Planner → Recent changes and can be undone.</p>
           </Card>
-          <Card title="AI planning assistant">
+          {settings.aiProvider === "gateway" && <Card title="AI planning suggestions (gateway)">
             {status && !status.ready ? <><p className="small muted">{status.why} The coach above works without any AI.</p><a className="btn small" href="#/settings">Open Settings</a></> : <>
               <p className="small muted">Sends only task titles, durations, deadlines, objective titles and free time windows (no notes, evidence, files or calendar event titles) to {aiTarget(settings)}. Its answer is checked against your rules before anything can change.</p>
               <button className="btn block" disabled={busy || !status} onClick={ask}>{busy ? "Asking…" : "Ask for a weekly plan"}</button></>}
             {err && <p className="small" style={{ color: "var(--warn)" }} role="alert">{err} Nothing was changed.</p>}
             {run && <AiResult run={run} onDone={() => setRun(null)} />}
-          </Card>
+          </Card>}
         </div>
       </div>
       {plan && <PlanSheet from={today} to={addDays(today, 6)} title="Plan my next 7 days" onClose={() => setPlan(false)} />}

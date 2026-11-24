@@ -9,7 +9,7 @@ import { Coach } from "./views/Coach";
 import { Settings } from "./views/Settings";
 import { minToHM, nowMin } from "./lib/dates";
 
-const TABS = [["today", "Today"], ["vision", "Vision"], ["planner", "Planner"], ["progress", "Progress"], ["coach", "Coach"]] as const;
+const TABS = [["today", "Today"], ["vision", "Vision"], ["planner", "Planner"], ["progress", "Progress"], ["coach", "Assistant"]] as const;
 function useRoute(): string { const [h, setH] = useState(location.hash.replace(/^#\/?/, "") || "today"); useEffect(() => { const f = () => { setH(location.hash.replace(/^#\/?/, "") || "today"); window.scrollTo(0, 0); }; addEventListener("hashchange", f); return () => removeEventListener("hashchange", f); }, []); return h.split("/")[0]!; }
 
 export function App() {

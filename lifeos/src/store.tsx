@@ -24,6 +24,8 @@ interface Ctx extends Data {
   toggleHabitOn: (habitId: string, date: DateStr) => Promise<void>;
   startFocus: (occId: string) => Promise<void>; stopFocus: () => Promise<void>;
   loadDemo: () => Promise<void>; reload: () => Promise<void>;
+  /** Always the latest data / settings (not a render snapshot): the assistant reads these between its own writes. */
+  getData: () => Data; getSettings: () => Settings;
 }
 const C = createContext<Ctx | null>(null);
 export const useApp = () => { const c = useContext(C); if (!c) throw new Error("no store"); return c; };
@@ -114,7 +116,7 @@ export function Provider({ db, children }: { db: Db; children: ReactNode }) {
     notify("Example plan loaded. Erase it any time in Settings.");
   }, [db, commit, today, notify]);
 
-  const value = useMemo<Ctx>(() => ({ ...data, db, today, settings, focus, toast, notify, commit, setSettings, complete, context, propose, approve, recover, undo, toggleHabitOn, startFocus, stopFocus, loadDemo, reload }), [data, db, today, settings, focus, toast, notify, commit, setSettings, complete, context, propose, approve, recover, undo, toggleHabitOn, startFocus, stopFocus, loadDemo, reload]);
+  const value = useMemo<Ctx>(() => ({ ...data, db, today, settings, focus, toast, notify, commit, setSettings, complete, context, propose, approve, recover, undo, toggleHabitOn, startFocus, stopFocus, loadDemo, reload, getData: () => ref.current, getSettings: () => sref.current }), [data, db, today, settings, focus, toast, notify, commit, setSettings, complete, context, propose, approve, recover, undo, toggleHabitOn, startFocus, stopFocus, loadDemo, reload]);
   if (!loaded) return <div className="boot">Loading…</div>;
   return <C.Provider value={value}>{children}</C.Provider>;
 }
