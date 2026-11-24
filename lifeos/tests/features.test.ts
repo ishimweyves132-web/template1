@@ -156,3 +156,16 @@ describe("backup with attachments", () => {
     const b = await open(); const m = await saveAttachment(b, file("keep.pdf", [1, 2])); await restoreBackup(b, plain); expect(await loadAttachment(b, m.id)).toBeTruthy();
   });
 });
+
+import { planSessionReminders } from "../src/lib/reminders";
+describe("native reminders plan", () => {
+  const T = "2026-11-24"; const now = new Date(2026, 10, 24, 9, 0, 0);
+  const sess = (id: string, date: string, startMin: number, occ: string) => ({ id, occId: occ, date, startMin, endMin: startMin + 30, state: "approved" as const, reason: "", createdAt: 0 });
+  const occ = (id: string, taskId: string, date: string, status = "planned") => ({ id, taskId, date, status: status as "planned", moves: 0, createdAt: 0 });
+  const task = { id: "t", title: "Write chapter" } as never;
+  it("only future sessions of unfinished work, lead time applied, stable ids", () => {
+    const r = planSessionReminders([sess("s1", T, 10 * 60, "o1"), sess("s2", T, 9 * 60 + 3, "o2"), sess("s3", T, 14 * 60, "o3"), sess("s4", "2026-12-20", 600, "o4")], [occ("o1", "t", T), occ("o2", "t", T), occ("o3", "t", T, "done"), occ("o4", "t", "2026-12-20")], [task], T, now, 10);
+    expect(r).toHaveLength(1); expect(r[0]).toMatchObject({ title: "Up next", body: "Write chapter at 10:00" }); expect(r[0]!.at.getHours() * 60 + r[0]!.at.getMinutes()).toBe(9 * 60 + 50);
+    expect(planSessionReminders([sess("s1", T, 10 * 60, "o1")], [occ("o1", "t", T)], [task], T, now, 10)[0]!.id).toBe(r[0]!.id);
+  });
+});

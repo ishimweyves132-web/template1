@@ -1,3 +1,4 @@
+import { isNative, shareNative } from "./native";
 import { DATA_STORES, type Db } from "./db";
 import { uid, type Settings } from "./model";
 import type { StoredFile } from "./attachments";
@@ -43,9 +44,11 @@ export async function restoreBackup(db: Db, file: BackupFile, reason = "before r
   if (f.attachments) await db.replaceStores({ files: f.attachments.map((a): StoredFile => ({ id: a.id, name: a.name, mime: a.mime, size: a.size, createdAt: a.createdAt, blob: b64ToBlob(a.b64, a.mime) })) });
 }
 export function downloadBlob(name: string, blob: Blob) {
+  if (isNative()) { void shareNative(name, blob); return; }
   const url = URL.createObjectURL(blob); const a = Object.assign(document.createElement("a"), { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 export function downloadJson(name: string, obj: unknown, mime = "application/json") {
+  if (isNative()) { void shareNative(name, new Blob([typeof obj === "string" ? obj : JSON.stringify(obj)], { type: mime })); return; }
   const url = URL.createObjectURL(new Blob([typeof obj === "string" ? obj : JSON.stringify(obj)], { type: mime }));
   const a = Object.assign(document.createElement("a"), { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
 }

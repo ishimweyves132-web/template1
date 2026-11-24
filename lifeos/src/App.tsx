@@ -8,15 +8,19 @@ import { Progress } from "./views/Progress";
 import { Coach } from "./views/Coach";
 import { Settings } from "./views/Settings";
 import { minToHM, nowMin } from "./lib/dates";
+import { isNative, syncNativeReminders } from "./lib/native";
+import { planSessionReminders } from "./lib/reminders";
 
 const TABS = [["today", "Today"], ["vision", "Vision"], ["planner", "Planner"], ["progress", "Progress"], ["coach", "Assistant"]] as const;
 function useRoute(): string { const [h, setH] = useState(location.hash.replace(/^#\/?/, "") || "today"); useEffect(() => { const f = () => { setH(location.hash.replace(/^#\/?/, "") || "today"); window.scrollTo(0, 0); }; addEventListener("hashchange", f); return () => removeEventListener("hashchange", f); }, []); return h.split("/")[0]!; }
 
 export function App() {
   const route = useRoute(); const { toast, settings, sessions, occurrences, tasks, today } = useApp();
+  // Android app: real notifications that fire even when the app is closed, re-planned whenever the plan changes.
+  useEffect(() => { if (!isNative()) return; void syncNativeReminders(settings.remindersEnabled ? planSessionReminders(sessions, occurrences, tasks, today, new Date(), settings.reminderLeadMin) : []).catch(() => undefined); }, [settings.remindersEnabled, settings.reminderLeadMin, sessions, occurrences, tasks, today]);
   // Reminders while the app is open (a web app cannot schedule notifications for when it is closed).
   useEffect(() => {
-    if (!settings.remindersEnabled || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (isNative() || !settings.remindersEnabled || typeof Notification === "undefined" || Notification.permission !== "granted") return;
     const tick = () => {
       const live = new Set(occurrences.filter((o) => o.status === "planned").map((o) => o.id)); const n = nowMin();
       for (const s of sessions) {

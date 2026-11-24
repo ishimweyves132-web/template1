@@ -8,11 +8,83 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4174",
     "test": "vitest run",
-    "e2e": "node e2e/run.cjs"
+    "e2e": "node e2e/run.cjs",
+    "desktop": "electron .",
+    "desktop:smoke": "electron . --smoke",
+    "desktop:dist:win": "electron-builder --win nsis portable --publish never",
+    "desktop:dist:linux": "electron-builder --linux AppImage --publish never",
+    "icons": "node tools/make-icons.cjs"
   },
-  "dependencies": { "react": "^19.2.0", "react-dom": "^19.2.0" },
+  "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/share": "^8.0.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
   "devDependencies": {
-    "@types/node": "^22.0.0", "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0", "@vitejs/plugin-react": "^5.2.0",
-    "fake-indexeddb": "^6.0.0", "typescript": "^5.8.3", "vite": "^7.0.0", "vitest": "^3.2.0"
+    "@capacitor/cli": "^8.6.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^38.8.6",
+    "electron-builder": "^26.18.0",
+    "fake-indexeddb": "^6.0.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0"
+  },
+  "description": "LifeOS: a private life-planning and execution system",
+  "author": {
+    "name": "LifeOS",
+    "email": "noreply@example.com"
+  },
+  "homepage": "https://github.com/ishimweyves132-web/template1",
+  "main": "desktop/main.cjs",
+  "build": {
+    "appId": "com.lifeos.app",
+    "productName": "LifeOS",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "desktop/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asar": true,
+    "compression": "normal",
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "LifeOS-Setup-${version}.exe"
+    },
+    "portable": {
+      "artifactName": "LifeOS-Portable-${version}.exe"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Office",
+      "target": [
+        "AppImage"
+      ],
+      "artifactName": "LifeOS-${version}-x86_64.AppImage"
+    },
+    "mac": {
+      "category": "public.app-category.productivity"
+    }
   }
 }

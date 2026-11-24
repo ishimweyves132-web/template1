@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useApp } from "../store";
 import { Card, Field, PageHead } from "../ui/kit";
 import { createBackup, downloadJson, restoreBackup, takeSnapshot, validateBackup, type Snapshot } from "../lib/backup";
+import { isNative, requestNativePermission } from "../lib/native";
 import { clearKey, keyInfo, loadKey, saveKey } from "../lib/aikey";
 import { listModels } from "../lib/gemini";
 import { fmtSize, storageUsed } from "../lib/attachments";
@@ -34,9 +35,9 @@ export function Settings() {
           </Card>
           <Card title="Appearance and reminders">
             <Field label="Theme"><select value={settings.theme} onChange={(e) => setSettings({ theme: e.target.value as "system" | "light" | "dark" })}><option value="system">Follow my device</option><option value="light">Light</option><option value="dark">Dark</option></select></Field>
-            <label className="row" style={{ margin: "0 0 8px" }}><input type="checkbox" checked={settings.remindersEnabled} onChange={async (e) => { const on = e.target.checked; if (on && typeof Notification !== "undefined" && Notification.permission === "default") setPerm(await Notification.requestPermission()); await setSettings({ remindersEnabled: on }); }} /><span className="small"><b>Remind me before scheduled tasks</b></span></label>
+            <label className="row" style={{ margin: "0 0 8px" }}><input type="checkbox" checked={settings.remindersEnabled} onChange={async (e) => { const on = e.target.checked; if (on && isNative()) { if (!(await requestNativePermission())) notify("Notifications are blocked for LifeOS. Allow them in Android Settings → Apps → LifeOS → Notifications."); } else if (on && typeof Notification !== "undefined" && Notification.permission === "default") setPerm(await Notification.requestPermission()); await setSettings({ remindersEnabled: on }); }} /><span className="small"><b>Remind me before scheduled tasks</b></span></label>
             <Field label="Minutes before"><input inputMode="numeric" value={settings.reminderLeadMin} onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, "")); if (n <= 120) setSettings({ reminderLeadMin: n }); }} /></Field>
-            <p className="small muted">Notifications: {perm}. In the browser, reminders appear while LifeOS is open or running in the background. Reliable reminders with the app closed need the Android app build (planned).</p>
+            <p className="small muted">Notifications: {perm}. {isNative() ? "In this Android app reminders are real notifications that arrive even when LifeOS is closed. Android may delay them a little to save battery." : "In the browser and desktop app, reminders appear while LifeOS is open or running in the background. The Android app delivers them even when closed."}</p>
           </Card>
           <Card title="AI assistant (optional)">
             <Field label="Provider"><select value={settings.aiProvider} onChange={(e) => setSettings({ aiProvider: e.target.value as "gemini" | "gateway" })}><option value="gemini">Google Gemini (my own key)</option><option value="gateway">My own gateway server</option></select></Field>
