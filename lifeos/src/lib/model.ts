@@ -39,7 +39,7 @@ export interface Execution {
 }
 export interface Habit { id: string; title: string; objectiveId: string | null; days: number[]; createdAt: number; archived: boolean }
 export interface HabitLog { id: string; habitId: string; date: DateStr; createdAt: number }
-export interface Evidence { id: string; objectiveId: string | null; krId: string | null; occId: string | null; kind: "note" | "link" | "number"; text: string; createdAt: number }
+export interface Evidence { id: string; objectiveId: string | null; krId: string | null; occId: string | null; kind: "note" | "link" | "number" | "file"; text: string; createdAt: number; fileId?: string; fileName?: string; mime?: string; size?: number }
 export interface Commitment { id: string; title: string; date: DateStr; startMin: number; endMin: number; source: "manual" | "ics"; externalId: string | null; protectedBlock: boolean; createdAt: number }
 export interface Review { id: string; period: "daily" | "weekly" | "monthly" | "quarterly" | "annual"; periodStart: DateStr; wins: string; misses: string; lessons: string; adjustments: string; snapshot: Record<string, number>; createdAt: number }
 
@@ -56,7 +56,8 @@ export interface Change {
 }
 export interface AiAudit { id: string; at: number; provider: string; request: string; proposal: string; validation: "accepted" | "rejected"; reasons: string[]; approval: "pending" | "approved" | "declined" | "n/a" }
 export interface Settings {
+  aiProvider: "gemini" | "gateway"; geminiModel: string;
   rules: Rules; theme: "system" | "light" | "dark"; aiGatewayUrl: string; aiEnabled: boolean; lastBackupAt: number | null;
   remindersEnabled: boolean; reminderLeadMin: number; onboarded: boolean;
 }
-export const defaultSettings = (): Settings => ({ rules: defaultRules(), theme: "system", aiGatewayUrl: "", aiEnabled: false, lastBackupAt: null, remindersEnabled: false, reminderLeadMin: 10, onboarded: false });
+export const defaultSettings = (): Settings => ({ aiProvider: "gemini", geminiModel: "", rules: defaultRules(), theme: "system", aiGatewayUrl: "", aiEnabled: false, lastBackupAt: null, remindersEnabled: false, reminderLeadMin: 10, onboarded: false });

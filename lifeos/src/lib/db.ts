@@ -3,8 +3,8 @@ import { defaultSettings, type Settings } from "./model";
 
 export const DATA_STORES = ["vision", "areas", "objectives", "krs", "krPoints", "tasks", "occurrences", "sessions", "executions", "habits", "habitLogs", "evidence", "commitments", "reviews", "changes", "aiAudit"] as const;
 export type StoreName = (typeof DATA_STORES)[number];
-const ALL = [...DATA_STORES, "snapshots", "kv"] as const;
-const DB_VERSION = 1;
+const ALL = [...DATA_STORES, "snapshots", "kv", "files"] as const;   // "files" holds attachment blobs
+const DB_VERSION = 2;
 const wrap = <T,>(r: IDBRequest<T>) => new Promise<T>((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 const done = (tx: IDBTransaction) => new Promise<void>((res, rej) => { tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error ?? new Error("Transaction aborted")); });
 
@@ -13,7 +13,7 @@ export class Db {
   static open(name = "lifeos"): Promise<Db> {
     return new Promise((res, rej) => {
       const req = indexedDB.open(name, DB_VERSION);
-      req.onupgradeneeded = () => { for (const s of ALL) req.result.createObjectStore(s, { keyPath: s === "kv" ? "key" : "id" }); };
+      req.onupgradeneeded = () => { for (const s of ALL) if (!req.result.objectStoreNames.contains(s)) req.result.createObjectStore(s, { keyPath: s === "kv" ? "key" : "id" }); };   // idempotent: v1 -> v2 only adds what is missing
       req.onsuccess = () => res(new Db(req.result)); req.onerror = () => rej(req.error);
       req.onblocked = () => rej(new Error("Database upgrade blocked by another tab"));
     });
@@ -30,6 +30,7 @@ export class Db {
     } catch (e) { tx.abort(); await finished.catch(() => {}); throw e; }   // a bad record must cancel EVERYTHING in this write, not just itself
     await finished;
   }
+  async get<T>(store: string, id: string): Promise<T | undefined> { return wrap(this.idb.transaction(store).objectStore(store).get(id) as IDBRequest<T | undefined>); }
   put(store: string, v: unknown) { return this.write({ put: [[store, v]] }); }
   async count(store: string) { return wrap(this.idb.transaction(store).objectStore(store).count()); }
   async replaceStores(data: Record<string, unknown[]>) {

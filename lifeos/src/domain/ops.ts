@@ -43,3 +43,15 @@ export function toggleHabit(habit: Habit, logs: HabitLog[], date: DateStr, now =
   return ex ? { remove: ex } : { add: { id: uid(), habitId: habit.id, date, createdAt: now } };
 }
 export const horizon = (today: DateStr, days = 21) => ({ from: today, to: addDays(today, days) });
+
+/** Remove a session from the plan (the task stays planned for its day). Recorded and undoable. */
+export function unscheduleSession(session: Session, taskId: string, reason: string, now = Date.now()): { sessions: Session[]; changes: Change[] } {
+  const cancelled: Session = { ...session, state: "cancelled" };
+  return { sessions: [cancelled], changes: [{ id: uid(), occId: session.occId, taskId, kind: "cancel", auto: false, reason, before: { date: session.date, startMin: session.startMin, endMin: session.endMin }, after: null, beforeOccDate: session.date, afterOccDate: session.date, sessionId: session.id, undone: false, createdAt: now }] };
+}
+/** Approved sessions of unresolved work that overlap a calendar commitment (e.g. a meeting was added after planning). */
+export function sessionConflicts(sessions: Session[], commitments: { date: DateStr; startMin: number; endMin: number; title: string }[], liveOccIds: Set<string>): { session: Session; with: string }[] {
+  const out: { session: Session; with: string }[] = [];
+  for (const s of sessions) { if (s.state !== "approved" || !liveOccIds.has(s.occId)) continue; const c = commitments.find((x) => x.date === s.date && s.startMin < x.endMin && s.endMin > x.startMin); if (c) out.push({ session: s, with: c.title }); }
+  return out;
+}

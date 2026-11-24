@@ -1,11 +1,12 @@
 // AI suggests -> this guard validates -> the user approves -> the database records. Anything outside the allow-list is rejected.
 import { addDays, type DateStr } from "../lib/dates";
-import type { Objective, Task } from "../lib/model";
+import { childLevel, type Level, type Objective, type Task } from "../lib/model";
 import { violation, type Busy, type Context, type Item } from "./scheduler";
 
 export type AiOp =
   | { op: "propose_schedule"; taskId: string; occId: string; date: DateStr; startMin: number; endMin: number; why: string }
   | { op: "propose_task"; title: string; estimateMin: number; objectiveId: string | null; priority: 1 | 2 | 3 | 4; onDate: DateStr | null; why: string }
+  | { op: "propose_objective"; parentId: string; level: Level; title: string; why: string; start: DateStr; target: DateStr }
   | { op: "advice"; text: string };
 export interface Verdict { accepted: AiOp[]; rejected: { raw: unknown; reasons: string[] }[] }
 const FORBIDDEN = new Set(["update_objective", "delete_objective", "change_target", "change_deadline", "change_vision", "delete_goal", "mark_completed", "move_external_event", "delete_event", "change_rules", "change_permissions", "update_key_result"]);
@@ -36,6 +37,18 @@ export function validateAi(raw: unknown, g: GuardContext): Verdict {
       else v.accepted.push({ op: "propose_task", title: (o.title as string).trim(), estimateMin: o.estimateMin as number, objectiveId: (o.objectiveId as string | null | undefined) ?? null, priority: ((o.priority as 1 | 2 | 3 | 4 | undefined) ?? 2), onDate: (o.onDate as DateStr | null | undefined) ?? null, why: typeof o.why === "string" ? o.why.slice(0, 300) : "" });
       continue;
     }
+    if (o.op === "propose_objective") {
+      const parent = g.objectives.find((x) => x.id === o.parentId); const lvl = parent ? childLevel(parent.level) : null;
+      if (!parent) reasons.push("parentId does not exist"); else if (parent.status === "cancelled" || parent.status === "archived") reasons.push("the parent objective is no longer active"); else if (!lvl) reasons.push("that objective has no lower level to add");
+      if (!text(o.title, 120)) reasons.push("title is required (max 120)");
+      if (!isDate(o.start) || !isDate(o.target)) reasons.push("start/target are not valid dates");
+      else if (parent && (o.start < parent.start || o.target > parent.target || o.target <= o.start)) reasons.push(`dates must sit inside the parent's window (${parent.start} to ${parent.target})`);
+      if (parent && text(o.title, 120) && g.objectives.some((x) => x.parentId === parent.id && x.title.trim().toLowerCase() === (o.title as string).trim().toLowerCase())) reasons.push("an objective with that title already exists there");
+      if (v.accepted.some((x) => x.op === "propose_objective" && x.parentId === o.parentId && x.title.toLowerCase() === String(o.title).trim().toLowerCase())) reasons.push("duplicate suggestion");
+      if (reasons.length || !parent || !lvl) v.rejected.push({ raw: op, reasons });
+      else v.accepted.push({ op: "propose_objective", parentId: parent.id, level: lvl, title: (o.title as string).trim(), why: typeof o.why === "string" ? o.why.slice(0, 300) : "", start: o.start as DateStr, target: o.target as DateStr });
+      continue;
+    }
     if (o.op === "propose_schedule") {
       const task = g.tasks.find((t) => t.id === o.taskId); const occ = g.occurrences.find((x) => x.id === o.occId);
       if (!task) reasons.push("unknown task"); if (!occ || occ.taskId !== o.taskId) reasons.push("unknown occurrence for that task");
@@ -57,7 +70,7 @@ export function validateAi(raw: unknown, g: GuardContext): Verdict {
 }
 /** The minimum context the model needs. No calendar event titles or descriptions, no notes, no evidence text. */
 export function buildAiRequest(args: { today: DateStr; tasks: { id: string; title: string; estimateMin: number; priority: number; deadline: DateStr | null }[]; free: Record<string, { start: number; end: number }[]>; rules: { maxDailyMin: number } }) {
-  return { today: args.today, horizonEnd: addDays(args.today, 6), tasks: args.tasks.map((t) => ({ id: t.id, title: t.title.slice(0, 80), estimateMin: t.estimateMin, priority: t.priority, deadline: t.deadline })), freeWindows: args.free, maxDailyMin: args.rules.maxDailyMin, allowedOperations: ["propose_schedule", "propose_task", "advice"] };
+  return { today: args.today, horizonEnd: addDays(args.today, 6), tasks: args.tasks.map((t) => ({ id: t.id, title: t.title.slice(0, 80), estimateMin: t.estimateMin, priority: t.priority, deadline: t.deadline })), freeWindows: args.free, maxDailyMin: args.rules.maxDailyMin, allowedOperations: ["propose_schedule", "propose_task", "propose_objective", "advice"] };
 }
 export async function callGateway(url: string, body: unknown, fetchImpl: typeof fetch = fetch, timeoutMs = 20000): Promise<unknown> {
   if (!/^https:\/\//.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(url)) throw new Error("The gateway address must use https");

@@ -44,7 +44,7 @@ p { margin: .35rem 0; } a { color: var(--sage-d); } .num { font-variant-numeric:
 .btn { font: inherit; font-weight: 600; font-size: .92rem; min-height: 44px; padding: 0 18px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--raised); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
 .btn.primary { background: var(--sage-d); color: #fff; border-color: var(--sage-d); } .btn.sand { background: var(--sand-bg); border-color: var(--sand); color: var(--sand-d); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.primary { color: #1b1d1a; } } :root[data-theme="dark"] .btn.primary { color: #1b1d1a; }
-.btn.ghost { border-color: transparent; background: transparent; color: var(--sage-d); padding: 0 10px; } .btn.danger { color: var(--warn); border-color: var(--warn); } .btn.small { min-height: 38px; padding: 0 13px; font-size: .86rem; } .btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--sage-d); padding: 0 10px; } .btn.danger { color: var(--warn); border-color: var(--warn); } .btn.small { min-height: 38px; padding: 0 13px; font-size: .86rem; white-space: nowrap; } .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn.block { display: flex; width: 100%; margin-top: 12px; }
 :focus-visible { outline: 2px solid var(--sage-d); outline-offset: 2px; }
 input, select, textarea { font: inherit; color: var(--ink); background: var(--raised); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 12px; width: 100%; min-height: 44px; } textarea { resize: vertical; }
@@ -87,3 +87,6 @@ input[type=checkbox] { width: 22px; height: 22px; min-height: 0; accent-color: v
 @media (prefers-reduced-motion: no-preference) { .bar i, .ring circle { transition: width .3s, stroke-dasharray .3s; } }
 
 @media (max-width: 899px) { .kids { margin-left: 6px; padding-left: 8px; } .node-h { gap: 6px; } }
+
+button.ev { text-align: left; font: inherit; color: var(--ink); cursor: pointer; width: auto; } .ev.conflict { border-color: var(--warn); background: var(--warn-bg); } .wk button.it { display: block; width: 100%; text-align: left; border: 0; font: inherit; font-size: .74rem; color: var(--ink); cursor: pointer; }
+.warn-card { border-color: var(--warn); background: var(--warn-bg); }

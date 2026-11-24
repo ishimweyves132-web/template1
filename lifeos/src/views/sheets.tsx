@@ -1,12 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../store";
 import { Bar, Empty, Field, Segmented, Sheet } from "../ui/kit";
 import { addDays, formatDate, formatMinutes, hmToMin, isDateStr, minToHM, range, weekdayIndex, type DateStr } from "../lib/dates";
 import { LEVELS, LEVEL_LABEL, childLevel, uid, type Area, type Commitment, type Evidence, type KeyResult, type KrPoint, type KrType, type Level, type Objective, type Preferred, type Review, type Task } from "../lib/model";
 import { elapsedFraction, krFraction, latestValue, objectiveOutcome, pace, trail } from "../domain/progress";
-import { missingOccurrences } from "../domain/ops";
+import { missingOccurrences, sessionConflicts } from "../domain/ops";
 import { executionStats } from "../domain/evaluation";
 import type { Placement } from "../domain/scheduler";
+import { AttachButton, EvidenceItems, useAddFileEvidence } from "./evidence";
+import { AiResult, useAiRun, type AiRun } from "./ai";
+import { aiStatus, buildBreakdownRequest } from "../lib/aiClient";
+import { fmtSize } from "../lib/attachments";
 
 export const objLabel = (o: Objective | undefined, all: Objective[]) => trail(o, all).map((x) => x.title).join(" › ");
 /** Compact breadcrumb for lists: the root goal and the objective itself ("Become a published author › Write chapters 1 to 4"). */
@@ -18,7 +22,7 @@ export function CompleteSheet({ occId, minutes, startTs, onClose }: { occId: str
   const { occurrences, tasks, complete, commit, notify, objectives } = useApp();
   const occ = occurrences.find((o) => o.id === occId); const task = tasks.find((t) => t.id === occ?.taskId);
   const [outcome, setOutcome] = useState<"done" | "partial" | "skipped">("done"); const [mins, setMins] = useState(String(minutes ?? task?.estimateMin ?? 30)); const [pct, setPct] = useState("50");
-  const [note, setNote] = useState(""); const [reason, setReason] = useState(""); const [proof, setProof] = useState("");
+  const [note, setNote] = useState(""); const [reason, setReason] = useState(""); const [proof, setProof] = useState(""); const [file, setFile] = useState<File | null>(null); const addFile = useAddFileEvidence();
   if (!occ || !task) return null;
   const m = Number(mins); const bad = outcome !== "skipped" && (!Number.isFinite(m) || m < 0 || m > 1440);
   return (
@@ -32,8 +36,10 @@ export function CompleteSheet({ occId, minutes, startTs, onClose }: { occId: str
       {outcome !== "done" && <Field label={outcome === "skipped" ? "Why was it skipped?" : "What got in the way?"} hint="Optional, but it helps the weekly review."><input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>}
       <Field label="Notes"><textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       {outcome !== "skipped" && <Field label="Evidence (optional)" hint="A result, link or number that shows the work happened."><input value={proof} onChange={(e) => setProof(e.target.value)} /></Field>}
+      {outcome !== "skipped" && <div className="row wrap" style={{ margin: "-4px 0 12px" }}><AttachButton label="Attach a file" onFile={(f) => { setFile(f); }} />{file && <span className="small muted">{file.name} · {fmtSize(file.size)}</span>}</div>}
       <button className="btn primary block" disabled={bad} onClick={async () => {
         await complete(occId, { outcome, minutes: m, pct: Number(pct), note, reason, startTs: startTs ?? null, endTs: startTs ? Date.now() : null });
+        if (file && outcome !== "skipped") { try { await addFile(file, { objectiveId: task.objectiveId, occId }); } catch (x) { notify((x as Error).message); } }
         if (proof.trim()) await commit({ put: { evidence: [{ id: uid(), objectiveId: task.objectiveId, krId: null, occId, kind: /^https?:/.test(proof) ? "link" : "note", text: proof.trim(), createdAt: Date.now() }] } });
         notify(outcome === "done" ? "Recorded as done" : outcome === "partial" ? "Recorded as partly done" : "Recorded as skipped"); onClose();
       }}>Save</button>
@@ -77,10 +83,12 @@ export function TaskSheet({ task, objectiveId, date, onClose }: { task?: Task; o
 
 // ---------------- objective: edit + key results + tasks + evidence ----------------
 export function ObjectiveSheet({ id, parentId, level, onClose }: { id?: string; parentId?: string | null; level?: Level; onClose: () => void }) {
-  const { objectives, areas, krs, krPoints, tasks, evidence, commit, today, notify } = useApp();
+  const { objectives, areas, krs, krPoints, tasks, evidence, commit, today, notify, db, settings } = useApp();
   const ex = objectives.find((o) => o.id === id); const parent = objectives.find((o) => o.id === (ex?.parentId ?? parentId));
   const lvl: Level = ex?.level ?? level ?? (parent ? (childLevel(parent.level) ?? "weekly") : "four-year");
   const [f, setF] = useState<Objective>(ex ?? { id: uid(), title: "", description: "", why: "", areaId: parent?.areaId ?? null, level: lvl, parentId: parent?.id ?? null, start: parent ? (parent.start > today ? parent.start : today) : today, target: parent ? parent.target : addDays(today, 365 * (lvl === "four-year" ? 4 : 1)), priority: 2, status: "active", completionCriteria: "", evidenceRequired: false, createdAt: Date.now(), updatedAt: Date.now() });
+  const addFile = useAddFileEvidence(); const runAi = useAiRun(); const [aiRun, setAiRun] = useState<AiRun | null>(null); const [aiBusy, setAiBusy] = useState(false); const [aiErr, setAiErr] = useState(""); const [aiOk, setAiOk] = useState<string>("checking");
+  useEffect(() => { void aiStatus(db, settings).then((s) => setAiOk(s.ready ? "" : s.why)); }, [db, settings]);
   const [newArea, setNewArea] = useState(""); const [taskOpen, setTaskOpen] = useState(false); const [proof, setProof] = useState(""); const [krForm, setKrForm] = useState(false);
   const mineK = krs.filter((k) => k.objectiveId === f.id); const oc = ex ? objectiveOutcome(ex, objectives, krs, krPoints) : null; const pc = ex && oc ? pace(ex, oc, today) : null;
   const err = !f.title.trim() ? "Give it a title" : f.target < f.start ? "The target date is before the start" : "";
@@ -111,9 +119,21 @@ export function ObjectiveSheet({ id, parentId, level, onClose }: { id?: string; 
           {!tasks.some((t) => t.objectiveId === ex.id && t.status === "active") && <Empty>No tasks yet.</Empty>}
           {taskOpen && <TaskSheet objectiveId={ex.id} onClose={() => setTaskOpen(false)} />}
           <div className="card-h" style={{ marginTop: 22 }}><h3>Evidence</h3></div>
-          {evidence.filter((e) => e.objectiveId === ex.id).sort((a, b) => b.createdAt - a.createdAt).map((e: Evidence) => <p key={e.id} className="small">• {e.text} <span className="muted">· {formatDate(new Date(e.createdAt).toISOString().slice(0, 10))}</span></p>)}
+          <EvidenceItems items={evidence.filter((e) => e.objectiveId === ex.id)} />
+          {!evidence.some((e) => e.objectiveId === ex.id) && <Empty>No evidence yet.</Empty>}
           <div className="row" style={{ marginTop: 8 }}><input placeholder="Add a result, link or number" value={proof} onChange={(x) => setProof(x.target.value)} /><button className="btn small" disabled={!proof.trim()} onClick={async () => { await commit({ put: { evidence: [{ id: uid(), objectiveId: ex.id, krId: null, occId: null, kind: /^https?:/.test(proof) ? "link" : "note", text: proof.trim(), createdAt: Date.now() }] } }); setProof(""); }}>Add</button></div>
-          {childLevel(ex.level) && <p style={{ marginTop: 22 }}><span className="muted small">Break it down: add the next level from the Vision screen (＋ beside this objective).</span></p>}
+          <div className="row" style={{ marginTop: 8 }}><AttachButton label="Attach a file" onFile={(f) => addFile(f, { objectiveId: ex.id, occId: null })} /><span className="small muted">Stored on this device only. Up to {fmtSize(10 * 1024 * 1024)} each.</span></div>
+          {childLevel(ex.level) && (
+            <div className="card" style={{ background: "var(--bg)", marginTop: 22 }}>
+              <div className="card-h"><h3>AI help</h3></div>
+              {aiOk && aiOk !== "checking" ? <p className="small muted">{aiOk} <a href="#/settings" onClick={onClose}>Open Settings</a></p> : <>
+                <p className="small muted">Suggests sub-objectives and first tasks. Only this objective's title, why and dates are sent. You approve each one; nothing existing is changed.</p>
+                <button className="btn small" disabled={aiBusy || aiOk === "checking"} onClick={async () => { setAiBusy(true); setAiErr(""); setAiRun(null); try { setAiRun(await runAi(buildBreakdownRequest(ex, objectives.filter((c) => c.parentId === ex.id)))); } catch (e) { setAiErr((e as Error).message); } setAiBusy(false); }}>{aiBusy ? "Thinking…" : "Break this down with AI"}</button></>}
+              {aiErr && <p className="small" style={{ color: "var(--warn)" }} role="alert">{aiErr} Nothing was changed.</p>}
+              {aiRun && <AiResult run={aiRun} onDone={() => setAiRun(null)} />}
+            </div>
+          )}
+          {childLevel(ex.level) && <p style={{ marginTop: 14 }}><span className="muted small">Or add the next level yourself with ＋ beside this objective on the Vision screen.</span></p>}
         </>
       )}
     </Sheet>
@@ -196,16 +216,24 @@ export function ReviewSheet({ period, periodStart, to, onClose }: { period: Revi
 }
 
 // ---------------- commitments ----------------
-export function CommitmentSheet({ date, onClose }: { date: DateStr; onClose: () => void }) {
-  const { commit, notify } = useApp(); const [f, setF] = useState({ title: "", date, start: "09:00", end: "10:00", protectedBlock: false }); const bad = !f.title.trim() || hmToMin(f.end) <= hmToMin(f.start) || !isDateStr(f.date);
+export function CommitmentSheet({ date, commitment, onClose }: { date: DateStr; commitment?: Commitment; onClose: () => void }) {
+  const { commit, notify, sessions, occurrences } = useApp(); const c0 = commitment;
+  const [f, setF] = useState({ title: c0?.title ?? "", date: c0?.date ?? date, start: c0 ? minToHM(c0.startMin) : "09:00", end: c0 ? minToHM(c0.endMin) : "10:00", protectedBlock: c0?.protectedBlock ?? false });
+  const readOnlyTime = c0?.source === "ics"; const bad = !f.title.trim() || hmToMin(f.end) <= hmToMin(f.start) || !isDateStr(f.date);
   return (
-    <Sheet title="Fixed commitment" onClose={onClose}>
-      <p className="muted small">Appointments and protected time. LifeOS plans around them and never moves them.</p>
-      <Field label="What"><input value={f.title} onChange={(x) => setF({ ...f, title: x.target.value })} /></Field>
-      <Field label="Date"><input type="date" value={f.date} onChange={(x) => setF({ ...f, date: x.target.value })} /></Field>
-      <div className="row2"><Field label="From"><input type="time" value={f.start} onChange={(x) => setF({ ...f, start: x.target.value })} /></Field><Field label="To" error={hmToMin(f.end) <= hmToMin(f.start) ? "Must be after the start" : ""}><input type="time" value={f.end} onChange={(x) => setF({ ...f, end: x.target.value })} /></Field></div>
-      <label className="row"><input type="checkbox" checked={f.protectedBlock} onChange={(x) => setF({ ...f, protectedBlock: x.target.checked })} /> <span className="small">Protected focus time</span></label>
-      <button className="btn primary block" disabled={bad} onClick={async () => { const c: Commitment = { id: uid(), title: f.title.trim(), date: f.date, startMin: hmToMin(f.start), endMin: hmToMin(f.end), source: "manual", externalId: null, protectedBlock: f.protectedBlock, createdAt: Date.now() }; await commit({ put: { commitments: [c] } }); notify("Commitment added"); onClose(); }}>Add</button>
+    <Sheet title={c0 ? (readOnlyTime ? "Imported event" : "Edit commitment") : "Fixed commitment"} onClose={onClose}>
+      <p className="muted small">{readOnlyTime ? "Imported from a calendar file. You can remove it here; to change it, change it in your calendar and import again." : "Appointments and protected time. LifeOS plans around them and never moves them."}</p>
+      <Field label="What"><input value={f.title} onChange={(x) => setF({ ...f, title: x.target.value })} disabled={readOnlyTime} /></Field>
+      <Field label="Date"><input type="date" value={f.date} onChange={(x) => setF({ ...f, date: x.target.value })} disabled={readOnlyTime} /></Field>
+      <div className="row2"><Field label="From"><input type="time" value={f.start} onChange={(x) => setF({ ...f, start: x.target.value })} disabled={readOnlyTime} /></Field><Field label="To" error={hmToMin(f.end) <= hmToMin(f.start) ? "Must be after the start" : ""}><input type="time" value={f.end} onChange={(x) => setF({ ...f, end: x.target.value })} disabled={readOnlyTime} /></Field></div>
+      {!readOnlyTime && <label className="row"><input type="checkbox" checked={f.protectedBlock} onChange={(x) => setF({ ...f, protectedBlock: x.target.checked })} /> <span className="small">Protected focus time</span></label>}
+      {!readOnlyTime && <button className="btn primary block" disabled={bad} onClick={async () => {
+        const c: Commitment = { id: c0?.id ?? uid(), title: f.title.trim(), date: f.date, startMin: hmToMin(f.start), endMin: hmToMin(f.end), source: "manual", externalId: null, protectedBlock: f.protectedBlock, createdAt: c0?.createdAt ?? Date.now() };
+        await commit({ put: { commitments: [c] } });
+        const live = new Set(occurrences.filter((o) => o.status === "planned" || o.status === "in-progress").map((o) => o.id)); const hit = sessionConflicts(sessions, [c], live).length;
+        notify(hit ? `Saved. It overlaps ${hit} scheduled task${hit === 1 ? "" : "s"}: see the warning in the Planner.` : c0 ? "Commitment updated" : "Commitment added"); onClose();
+      }}>{c0 ? "Save changes" : "Add"}</button>}
+      {c0 && <button className="btn danger block" onClick={async () => { if (confirm(`Remove “${c0.title}”?`)) { await commit({ del: { commitments: [c0.id] } }); notify("Removed"); onClose(); } }}>Remove</button>}
     </Sheet>
   );
 }

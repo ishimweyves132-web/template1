@@ -24,10 +24,13 @@ GitHub Pages: repo Settings → Pages → Source: *GitHub Actions*, then run the
 | 4 Evaluation | execution, consistency, outcome, evidence kept separate; weekly/monthly reviews; Life Ledger | built and tested |
 | 5 Intelligence | rule-based coach; optional AI gateway whose answers are validated before anything can change | built and tested (the AI path only against a mock gateway) |
 | 6 Reliability | offline service worker, safety copies, accessibility checks, light/dark, responsive layouts | built and tested |
-| Not built | native Android (Google Calendar API, device calendar, exact alarms, background reminders), encrypted cloud backup, file attachments for evidence, multi-time-zone travel | planned |
+| 7 Attachments, Gemini, in-app calendar | evidence files stored on the device (optional in backups); your own Gemini API key pasted in Settings (encrypted on the device, never in backups); AI can suggest tasks, schedules and sub-goals (all validated, drafts need your approval); edit/delete commitments, move or unschedule sessions, conflict warnings | built and tested (Gemini only against a mocked API) |
+| Not built | native Android (Google Calendar API, device calendar, exact alarms, background reminders), encrypted cloud backup, multi-time-zone travel | planned |
 
 ## Limits you should know
-* **Calendars** connect through `.ics` files (import and export). Direct Google Calendar / Android device-calendar sync needs the native Android app and OAuth, which is not built.
+* **External calendars** connect through `.ics` files (import and export). Direct Google Calendar / Android device-calendar sync needs the native Android app and OAuth, which is not built.
 * **Reminders** work while the app is open or in the background; a web app cannot schedule notifications for when it is closed.
-* **AI**: no model or key ships with LifeOS. You may connect your own gateway; it has been tested only with a mock server. The coach itself is rule-based.
+* **AI**: no model or key ships with LifeOS. Paste your own Gemini API key in Settings (or connect your own gateway). The key is sent only to Google. I verified the endpoint accepts browser requests with the key in a header, but I could not run a real Gemini request without your key; everything else is tested against a mock. The coach itself is rule-based.
+* **Attachments** are stored on this device, up to 10 MB each, and are included in a backup only if you tick the option. Programs, scripts and web pages are refused.
+* **Calendar**: LifeOS uses its own calendar (plus .ics import/export).
 * Times are stored as local wall-clock times; travelling across time zones is not adjusted.

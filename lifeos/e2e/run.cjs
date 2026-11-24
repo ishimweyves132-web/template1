@@ -117,7 +117,7 @@ const idb = (page, fn, arg) => page.evaluate(([src, a]) => new Promise((res, rej
 
   await test("coach: plain, rule-based observations; AI gateway answers are validated — forbidden powers rejected, good proposals applied only after approval", async () => {
     await nav(page, "#/coach"); await has(page, "What the coach sees"); await has(page, "What the coach may and may not do");
-    await nav(page, "#/settings"); await page.getByLabel("Allow the planning assistant").click(); await page.waitForFunction(() => document.querySelector("input[type=checkbox]:checked") !== null); await page.getByLabel("Your gateway address").fill("https://gw.test/plan"); await page.getByLabel("Your gateway address").blur();
+    await nav(page, "#/settings"); await page.locator('select:has(option[value="gateway"])').selectOption("gateway"); await page.getByLabel("Your gateway address").fill("https://gw.test/plan"); await page.getByLabel("Your gateway address").blur();
     const occId = await idb(page, (db) => new Promise((res) => { const r = db.transaction("occurrences").objectStore("occurrences").getAll(); r.onsuccess = () => res(r.result.filter((o) => o.status === "planned").map((o) => [o.id, o.taskId])); }));
     const t0 = occId.find((x) => x[1] === "late") ?? occId[0];
     let sent = ""; await ctx.route("https://gw.test/plan", async (route) => { sent = route.request().postData() ?? ""; await route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify({ operations: [
@@ -127,12 +127,78 @@ const idb = (page, fn, arg) => page.evaluate(([src, a]) => new Promise((res, rej
     const t = await page.locator("main").innerText(); ok(/not permitted to delete objective/.test(t) && /not permitted to change deadline/.test(t) && /outside working hours/.test(t), "rejections explained: " + t.slice(0, 700));
     ok(!/notes|evidence|description/i.test(sent) && sent.includes("allowedOperations"), "request is minimal"); ok(!sent.includes("Dentist") && !sent.includes("Board meeting"), "no calendar event titles sent");
     const before = await idb(page, (db) => new Promise((res) => { const r = db.transaction("tasks").objectStore("tasks").getAll(); r.onsuccess = () => res(r.result.length); }));
-    await page.getByRole("button", { name: "Approve these" }).click(); await page.waitForTimeout(300);
+    await page.getByRole("button", { name: /^Approve \d+ selected/ }).click(); await page.waitForTimeout(300);
     const after = await idb(page, (db) => new Promise((res) => { const r = db.transaction("tasks").objectStore("tasks").getAll(); r.onsuccess = () => res([r.result.length, r.result.some((x) => x.title === "Book the DELF exam")]); })); eq(after, [before + 1, true], "only the validated task was created");
     const audit = await idb(page, (db) => new Promise((res) => { const r = db.transaction("aiAudit").objectStore("aiAudit").getAll(); r.onsuccess = () => res(r.result.map((a) => [a.validation, a.approval])); })); ok(audit.length >= 1 && audit[0][1] === "approved", "audit trail kept: " + JSON.stringify(audit));
     await ctx.unroute("https://gw.test/plan");
     await ctx.route("https://gw.test/plan", (route) => route.fulfill({ status: 500, body: "boom" })); await page.getByRole("button", { name: "Ask for a weekly plan" }).click(); await has(page, "HTTP 500"); await has(page, "Nothing was changed"); await ctx.unroute("https://gw.test/plan");
     await page.screenshot({ path: path.join(out, "04-coach.png"), fullPage: true });
+  });
+
+  await test("attachments: attach a file to evidence, preview, download the same bytes, refuse bad files, remove", async () => {
+    await nav(page, "#/vision"); await page.getByRole("button", { name: /^Open Learn 500 core words/ }).click();
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAHK7yXwAAAABJRU5ErkJggg==", "base64");
+    fs.writeFileSync(path.join(out, "proof.png"), png); fs.writeFileSync(path.join(out, "report.pdf"), Buffer.from("%PDF-1.4 fake pdf bytes")); fs.writeFileSync(path.join(out, "run.exe"), "MZ"); fs.writeFileSync(path.join(out, "empty.txt"), "");
+    const input = page.locator('.sheet input[type=file][aria-label="Attach a file"]').last();
+    await input.setInputFiles(path.join(out, "proof.png")); await has(page, "proof.png", ".sheet"); await page.waitForSelector('.sheet img[alt="Preview of proof.png"]');
+    await input.setInputFiles(path.join(out, "report.pdf")); await has(page, "report.pdf", ".sheet");
+    await input.setInputFiles(path.join(out, "run.exe")); await has(page, "cannot be attached", ".toast"); await input.setInputFiles(path.join(out, "empty.txt")); await has(page, "empty", ".toast");
+    ok(!(await page.locator(".sheet").innerText()).includes("run.exe"), "blocked file not stored");
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.locator("li", { hasText: "report.pdf" }).getByRole("button", { name: "Download" }).click()]); const dp = path.join(out, "dl.pdf"); await dl.saveAs(dp); eq(fs.readFileSync(dp, "utf8"), "%PDF-1.4 fake pdf bytes", "downloaded bytes");
+    const stored = await idb(page, (db) => new Promise((res) => { const r = db.transaction("files").objectStore("files").getAll(); r.onsuccess = () => res(r.result.map((f) => [f.name, f.size])); })); eq(stored.sort(), [["proof.png", png.length], ["report.pdf", 23]].sort(), "files stored locally");
+    await page.screenshot({ path: path.join(out, "06-evidence.png") });
+    page.once("dialog", (d) => d.accept()); await page.getByRole("button", { name: "Remove proof.png" }).click(); await gone(page, "proof.png", ".sheet");
+    eq((await idb(page, (db) => new Promise((res) => { const r = db.transaction("files").objectStore("files").count(); r.onsuccess = () => res(r.result); }))), 1, "removed file deleted from storage, not just hidden");
+    await page.keyboard.press("Escape");
+  });
+
+  await test("Gemini key: saved encrypted, key travels only in a header, models are loaded for your key, and it never reaches a backup", async () => {
+    const KEY = "AIzaSyFAKEKEYFORTESTING0123456789abcd"; const calls = [];
+    await ctx.route("https://generativelanguage.googleapis.com/**", async (route) => { const rq = route.request(); calls.push({ url: rq.url(), key: rq.headers()["x-goog-api-key"], method: rq.method(), body: rq.postData() });
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*" }; if (rq.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      if (rq.url().includes("/models?")) return route.fulfill({ status: 200, contentType: "application/json", headers: cors, body: JSON.stringify({ models: [{ name: "models/gemini-2.5-pro", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] }, { name: "models/embedding-001", supportedGenerationMethods: ["embedContent"] }] }) });
+      const parent = JSON.parse(rq.postData() || "{}").contents?.[0]?.parts?.[0]?.text ?? ""; const pid = (/"objective":\{"id":"([^"]+)"/.exec(parent) || [])[1] ?? "x";
+      return route.fulfill({ status: 200, contentType: "application/json", headers: cors, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ operations: [
+        { op: "propose_objective", parentId: pid, title: "Finish the A2 workbook", why: "Foundation", start: addD(1), target: addD(60) },
+        { op: "propose_objective", parentId: pid, title: "Way too long", why: "x", start: addD(1), target: "2099-01-01" },
+        { op: "delete_objective", id: pid }, { op: "advice", text: "Do 20 words a day." } ] }) }] } }] }) }); });
+    await nav(page, "#/settings"); await page.locator('select:has(option[value="gateway"])').selectOption("gemini");
+    ok(await page.getByLabel("Paste your Gemini API key").evaluate((e) => e.type === "password"), "key field is masked"); await page.getByLabel("Paste your Gemini API key").fill(KEY); await page.getByRole("button", { name: "Save key" }).click(); await has(page, "Key saved");
+    ok(!(await page.locator("main").innerText()).includes(KEY), "key is not shown again"); await has(page, "…abcd");
+    await page.getByRole("button", { name: "Test key and load models" }).click(); await has(page, "Key works. 2 models available");
+    eq(await page.getByLabel("Model").inputValue(), "gemini-2.5-flash", "flash model chosen first");
+    ok(calls.length >= 1 && calls.every((c) => !c.url.includes(KEY) && c.key === KEY), "key only in the header, never in a URL");
+    const vault = await idb(page, (db) => new Promise((res) => { const r = db.transaction("kv").objectStore("kv").getAll(); r.onsuccess = () => res(JSON.stringify(r.result.map((x) => (x.key === "deviceKey" ? x.key : x))) ); })); ok(!vault.includes(KEY) && !vault.includes("FAKEKEYFOR"), "not stored as plain text");
+    await page.screenshot({ path: path.join(out, "07-settings-ai.png"), fullPage: true });
+    // break an objective down with AI
+    await nav(page, "#/vision"); await page.getByRole("button", { name: /^Open Pass the DELF B1 exam/ }).click(); const before = await idb(page, (db) => new Promise((res) => { const r = db.transaction("objectives").objectStore("objectives").getAll(); r.onsuccess = () => res(r.result.length); }));
+    const sentBefore = calls.length; await page.getByRole("button", { name: "Break this down with AI" }).click(); await has(page, "Validated suggestions", ".sheet"); await has(page, "2 rejected", ".sheet");
+    const txt = await page.locator(".sheet").innerText(); ok(/Finish the A2 workbook/.test(txt) && /not permitted to delete objective/.test(txt) && /inside the parent's window/.test(txt), "validated + rejected shown: " + txt.slice(-600));
+    const gen = calls.slice(sentBefore).find((c) => c.method === "POST"); ok(gen && gen.key === KEY && !gen.url.includes(KEY), "generateContent used the header key"); const sent = gen.body; ok(sent.includes("Pass the DELF B1 exam") && !sent.includes("Dentist") && !/evidence|notes/i.test(JSON.parse(sent).contents[0].parts[0].text.replace(/allowedOperations/, "")), "only the objective was sent");
+    const mid = await idb(page, (db) => new Promise((res) => { const r = db.transaction("objectives").objectStore("objectives").getAll(); r.onsuccess = () => res(r.result.length); })); eq(mid, before, "nothing changed before approval");
+    await page.getByRole("button", { name: /^Approve \d+ selected/ }).click(); await page.waitForTimeout(300);
+    const objs = await idb(page, (db) => new Promise((res) => { const r = db.transaction("objectives").objectStore("objectives").getAll(); r.onsuccess = () => res(r.result.filter((o) => o.title === "Finish the A2 workbook").map((o) => [o.status, o.level])); })); eq(objs, [["draft", "quarterly"]], "created as a DRAFT at the correct child level");
+    const bk = await idb(page, async () => 1); void bk; await nav(page, "#/settings"); const [bdl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export backup" }).click()]); const bp = path.join(out, "with-key.json"); await bdl.saveAs(bp);
+    const btxt = fs.readFileSync(bp, "utf8"); ok(!btxt.includes(KEY) && !btxt.includes("aiKey") && !btxt.includes("deviceKey"), "backup contains no key material");
+    page.once("dialog", (d) => d.accept()); await page.getByRole("button", { name: "Remove key" }).click(); await has(page, "Paste your Gemini API key"); await ctx.unroute("https://generativelanguage.googleapis.com/**");
+  });
+
+  await test("in-app calendar: edit and delete a commitment, conflicts are flagged, unschedule/undo, moves obey the rules", async () => {
+    const d = new Date(); const today = iso(d);
+    const sess = await idb(page, (db, today) => new Promise((res) => { const s = db.transaction("sessions").objectStore("sessions").getAll(); s.onsuccess = () => { const o = db.transaction("occurrences").objectStore("occurrences").getAll(); o.onsuccess = () => { const live = new Set(o.result.filter((x) => x.status === "planned").map((x) => x.id)); res(s.result.filter((x) => x.state === "approved" && live.has(x.occId) && x.date >= today).sort((a, b) => a.date.localeCompare(b.date) || a.startMin - b.startMin)[0]); }; }; }), today);
+    ok(sess, "an approved session exists"); await idb(page, (db, a) => new Promise((res) => { const tx = db.transaction("commitments", "readwrite"); tx.objectStore("commitments").put({ id: "conf", title: "Surprise meeting", date: a.date, startMin: a.startMin + 5, endMin: a.endMin + 5, source: "manual", externalId: null, protectedBlock: false, createdAt: 1 }); tx.oncomplete = () => res(); }), { date: sess.date, startMin: sess.startMin, endMin: sess.endMin });
+    await page.reload(); await nav(page, "#/planner"); await has(page, "LifeOS never moves your commitments"); await has(page, "Surprise meeting");
+    await page.screenshot({ path: path.join(out, "08-conflict.png"), fullPage: true });
+    await page.getByRole("button", { name: "Unschedule and re-plan" }).click(); await has(page, "Re-plan around your commitments", ".sheet"); const txt = await page.locator(".sheet").innerText(); const mm = [...txt.matchAll(/(\d\d):(\d\d)–(\d\d):(\d\d)/g)];
+    ok(mm.length >= 1, "a new plan was proposed"); await page.locator(".sheet .btn.primary.block").click(); await page.waitForSelector(".sheet", { state: "detached" }); await gone(page, "LifeOS never moves your commitments");
+    await page.getByRole("tab", { name: "Week" }).click(); await page.waitForSelector(".wk button.it"); const cm = page.locator(".wk button.it.c", { hasText: "Surprise meeting" }).first(); await cm.click(); await has(page, "Edit commitment", ".sheet");
+    await page.getByLabel("What").fill("Renamed meeting"); await page.locator(".sheet .btn.primary.block").click(); await has(page, "Renamed meeting", "main");
+    await page.locator(".wk button.it", { hasText: "Renamed meeting" }).first().click(); page.once("dialog", (x) => x.accept()); await page.getByRole("button", { name: "Remove", exact: true }).click(); await page.waitForSelector(".sheet", { state: "detached" });
+    const gone1 = await idb(page, (db) => new Promise((res) => { const r = db.transaction("commitments").objectStore("commitments").get("conf"); r.onsuccess = () => res(r.result === undefined); })); ok(gone1, "commitment deleted");
+    await page.locator(".wk button.it.s").first().click(); await page.getByLabel("Starts").fill("03:00"); await has(page, "Can't move there:", ".sheet"); ok(/Can't move there: (outside working hours|already started)/.test(await page.locator(".sheet").innerText()), "illegal time refused with a reason"); ok(await page.getByRole("button", { name: "Move", exact: true }).isDisabled(), "illegal move disabled");
+    await page.getByLabel("Day").fill(addD(-3)); await has(page, "Can't move there: in the past", ".sheet");
+    await page.getByRole("button", { name: "Unschedule" }).click(); await has(page, "Unscheduled", ".toast"); await page.locator("li", { hasText: "Cancel" }).first().waitFor({ state: "hidden" }).catch(() => {});
+    await has(page, "Undo", "main"); const li = page.locator("li", { hasText: "Rescheduled" }).first(); void li;
   });
 
   await test("backup: export, erase everything, restore; damaged and foreign files refused", async () => {

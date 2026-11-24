@@ -17,7 +17,7 @@ interface Ctx extends Data {
   db: Db; today: DateStr; settings: Settings; focus: FocusState | null; toast: string; notify: (m: string) => void;
   commit: (w: Writes) => Promise<void>; setSettings: (p: Partial<Settings>) => Promise<void>;
   complete: (occId: string, input: CompleteInput) => Promise<void>;
-  context: (extraSessions?: Session[]) => Context;
+  context: (extraSessions?: Session[], excludeOcc?: string) => Context;
   propose: (from: DateStr, to: DateStr) => { placements: Placement[]; unplaced: Unplaced[] };
   approve: (placements: Placement[], reason: string) => Promise<void>;
   recover: () => Promise<Recovery>; undo: (changeId: string) => Promise<string | null>;
@@ -55,11 +55,11 @@ export function Provider({ db, children }: { db: Db; children: ReactNode }) {
     ref.current = n as unknown as Data; setData(ref.current);
   }, [db, notify]);
 
-  const context = useCallback((extra: Session[] = []): Context => {
+  const context = useCallback((extra: Session[] = [], excludeOcc?: string): Context => {
     const d = ref.current; const live = new Set(d.occurrences.filter((o) => o.status === "planned" || o.status === "in-progress").map((o) => o.id));
     return { rules: sref.current.rules, today, now: nowMin(), busy: (date) => [
       ...d.commitments.filter((c) => c.date === date).map((c): Busy => ({ startMin: c.startMin, endMin: c.endMin, kind: c.source === "ics" ? "external" : c.protectedBlock ? "protected" : "commitment", id: c.id })),
-      ...[...d.sessions, ...extra].filter((s) => s.date === date && s.state === "approved" && live.has(s.occId)).map((s): Busy => ({ startMin: s.startMin, endMin: s.endMin, kind: "session", id: s.occId })),
+      ...[...d.sessions, ...extra].filter((s) => s.date === date && s.state === "approved" && live.has(s.occId) && s.occId !== excludeOcc).map((s): Busy => ({ startMin: s.startMin, endMin: s.endMin, kind: "session", id: s.occId })),
     ] };
   }, [today]);
 

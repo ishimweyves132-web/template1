@@ -100,7 +100,7 @@ describe("AI guard: AI may suggest, never decide", () => {
   });
   it("the request sent to a model contains no notes, evidence or calendar event titles", () => {
     const r = buildAiRequest({ today: TODAY, tasks: [{ id: "t1", title: "French", estimateMin: 60, priority: 2, deadline: null }], free: { [TODAY]: [{ start: 480, end: 600 }] }, rules: { maxDailyMin: 360 } });
-    const s = JSON.stringify(r); expect(s).not.toMatch(/notes|evidence|description|attendee/i); expect(r.allowedOperations).toEqual(["propose_schedule", "propose_task", "advice"]);
+    const s = JSON.stringify(r); expect(s).not.toMatch(/notes|evidence|description|attendee/i); expect(r.allowedOperations).toEqual(["propose_schedule", "propose_task", "propose_objective", "advice"]);
   });
   it("gateway: https only (localhost allowed), failures are explicit, timeouts abort", async () => {
     await expect(callGateway("http://example.com/x", {})).rejects.toThrow(/https/);
