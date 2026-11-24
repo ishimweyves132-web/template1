@@ -1,3 +1,4 @@
 
 # dictionary pack is generated in CI from Wiktionary data, never committed
 public/dict/
+release/

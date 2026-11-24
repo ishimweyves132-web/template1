@@ -1,0 +1,107 @@
+name: French Mastery for Windows
+# Builds the French Mastery desktop app for Windows (installer + portable exe) with the full English-French dictionary inside,
+# launches the packaged app to check it works, and publishes a GitHub Release. Run it from the Actions tab or push a change under french-tracker/.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/french-mastery-tracker-app-jbyezh]
+    paths: ["french-tracker/**", ".github/workflows/french-windows.yml"]
+permissions:
+  contents: write
+env:
+  VERSION: 1.0.${{ github.run_number }}
+jobs:
+  dictionary:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: french-tracker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: french-tracker/package-lock.json
+      - run: npm ci
+      - name: Download Wiktionary French data (kaikki.org) and build the dictionary pack
+        # The downloaded file is treated as data: it lives in its own directory and is only passed as an argument.
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/kaikki public/dict
+          curl -fL --retry 5 --retry-delay 5 -o /tmp/kaikki/french.jsonl https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl
+          node tools/build-pack.mjs --in /tmp/kaikki/french.jsonl --lang en --out public/dict --version "$(date -u +%Y-%m)-f2" \
+            --source "Wiktionary (English edition) via kaikki.org / Wiktextract" --license "CC BY-SA 4.0 and GFDL" --min-entries 20000 --max-mb 60
+          node tools/verify-pack.mjs public/dict "chat:m:cat,maison:f:house,être::be,avoir::have,aller::go,bonjour::hello,merci::thank,école:f:school,livre:m:book,eau:f:water,ville:f:city,pays:m:country,ami:m:friend,femme:f:woman,homme:m:man,temps:m:time,travail:m:work,langue:f:language,manger::eat,français::french" "manger:mangeons,être:sommes,avoir:avons,aller:allons,chat:chats,beau:belle,chanter:chantons"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: french-dict
+          path: french-tracker/public/dict
+          if-no-files-found: error
+
+  windows:
+    needs: dictionary
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: french-tracker
+        shell: pwsh
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: french-tracker/package-lock.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: french-dict
+          path: french-tracker/public/dict
+      - run: npm ci
+      - run: npm run build
+      - name: Build installer and portable app
+        run: npx electron-builder --win nsis portable --publish never --config.extraMetadata.version=$env:VERSION
+      - name: Launch the packaged app and check it works
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "smoke.txt"
+          $p = Start-Process -FilePath ".\release\win-unpacked\French Mastery.exe" -ArgumentList "--smoke","--smoke-out=$out","--smoke-shot=$env:RUNNER_TEMP\smoke.png" -Wait -PassThru
+          if (Test-Path $out) { Get-Content $out }
+          if ($p.ExitCode -ne 0) { throw "smoke test failed with exit code $($p.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: french-windows
+          path: |
+            french-tracker/release/FrenchMastery-Setup-*.exe
+            french-tracker/release/FrenchMastery-Portable-*.exe
+          if-no-files-found: error
+
+  release:
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: french-windows
+          path: dist-artifacts
+      - name: Publish a permanent GitHub Release (every version is kept)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist-artifacts
+          {
+            echo "French Mastery $VERSION for Windows, built from commit ${GITHUB_SHA::7}."
+            echo
+            echo "- FrenchMastery-Setup-$VERSION.exe: installer."
+            echo "- FrenchMastery-Portable-$VERSION.exe: runs without installing."
+            echo "- Includes the English-French dictionary (Wiktionary via kaikki.org, CC BY-SA 4.0 / GFDL)."
+            echo "- Windows SmartScreen may warn that the publisher is unknown (the app is not code-signed): More info, then Run anyway."
+            echo "- The packaged app was launched in CI and checked to start, render and store data."
+            echo
+            echo "Latest commit message:"
+            echo
+            git log -1 --pretty=%B
+          } > notes.md
+          gh release create "french-windows-v$VERSION" dist-artifacts/* --title "French Mastery Windows $VERSION" --notes-file notes.md --target "$GITHUB_SHA" --prerelease

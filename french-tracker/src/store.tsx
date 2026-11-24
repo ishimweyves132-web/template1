@@ -95,7 +95,7 @@ export function Provider({ db, children }: { db: Db; children: ReactNode }) {
   // Android app: the full dictionary ships inside the APK. Install it once, in the background, with checksum verification.
   // Skipped on the web (there the dictionary is an optional download). After a failure, retry no sooner than 24 h later.
   useEffect(() => {
-    if (!loaded || !isNative()) return;
+    if (!loaded || !(isNative() || location.protocol === "app:")) return; // Android app and desktop app ship the dictionary inside
     let failedAt = 0; try { failedAt = Number(localStorage.getItem("fmt-bundled-fail") ?? 0); } catch { /* storage unavailable */ }
     if (Date.now() - failedAt < 86_400_000) return;
     void installBundled(db, "./dict/manifest.json", setDictInstall)
