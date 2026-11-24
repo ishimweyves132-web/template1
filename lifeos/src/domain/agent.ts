@@ -148,6 +148,7 @@ export function runTool(name: string, a: Args, env: ToolEnv): ToolOutcome {
     case "cancel_task": {
       const t = one(data.tasks, a.id); if (!t) return err(`task ${String(a.id)} does not exist`);
       put.tasks = [{ ...t, status: "cancelled" as const }]; put.occurrences = data.occurrences.filter((o) => o.taskId === t.id && (o.status === "planned" || o.status === "in-progress") && o.date >= today).map((o) => ({ ...o, status: "cancelled" as const }));
+      const gone = new Set(put.occurrences.map((o) => o.id)); const slots = data.sessions.filter((x) => gone.has(x.occId) && x.state === "approved").map((x) => ({ ...x, state: "cancelled" as const })); if (slots.length) put.sessions = slots;
       return finish(`Cancelled task “${t.title}”`, { cancelledOccurrences: put.occurrences.length });
     }
     case "complete_task": {

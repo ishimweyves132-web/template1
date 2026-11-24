@@ -171,3 +171,18 @@ describe("model failures mid-run", () => {
     await undoRun(r.run, a.deps(model)); expect(a.data.tasks).toHaveLength(0);
   });
 });
+
+describe("regression found by the live LLM run", () => {
+  it("cancelling a scheduled task also frees its calendar slot, and the assistant no longer sees it", async () => {
+    const a = app(); const t = await apply(a, "create_task", { title: "Run", onDate: TODAY, estimateMin: 45 });
+    await apply(a, "schedule_session", { taskId: t.result.id, date: TODAY, startMin: 11 * 60, endMin: 11 * 60 + 45 });
+    expect(a.data.sessions.filter((s) => s.state === "approved")).toHaveLength(1);
+    await apply(a, "cancel_task", { id: t.result.id });
+    expect(a.data.sessions.filter((s) => s.state === "approved")).toHaveLength(0);
+    expect(JSON.parse(buildFullContext(a.data, a.settings, TODAY, 480)).calendar).toHaveLength(0);
+  });
+  it("a stale approved session of a cancelled occurrence never shows up in the model's calendar", () => {
+    const a = app(); a.data.occurrences.push({ id: "o", taskId: "t", date: TODAY, status: "cancelled", moves: 0, createdAt: 0 }); a.data.sessions.push({ id: "s", occId: "o", date: TODAY, startMin: 600, endMin: 660, state: "approved", reason: "", createdAt: 0 });
+    expect(JSON.parse(buildFullContext(a.data, a.settings, TODAY, 480)).calendar).toHaveLength(0);
+  });
+});
