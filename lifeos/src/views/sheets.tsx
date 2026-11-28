@@ -85,8 +85,8 @@ export function TaskSheet({ task, objectiveId, date, onClose }: { task?: Task; o
 export function ObjectiveSheet({ id, parentId, level, onClose }: { id?: string; parentId?: string | null; level?: Level; onClose: () => void }) {
   const { objectives, areas, krs, krPoints, tasks, evidence, commit, today, notify, db, settings } = useApp();
   const ex = objectives.find((o) => o.id === id); const parent = objectives.find((o) => o.id === (ex?.parentId ?? parentId));
-  const lvl: Level = ex?.level ?? level ?? (parent ? (childLevel(parent.level) ?? "weekly") : "four-year");
-  const [f, setF] = useState<Objective>(ex ?? { id: uid(), title: "", description: "", why: "", areaId: parent?.areaId ?? null, level: lvl, parentId: parent?.id ?? null, start: parent ? (parent.start > today ? parent.start : today) : today, target: parent ? parent.target : addDays(today, 365 * (lvl === "four-year" ? 4 : 1)), priority: 2, status: "active", completionCriteria: "", evidenceRequired: false, createdAt: Date.now(), updatedAt: Date.now() });
+  const lvl: Level = ex?.level ?? level ?? (parent ? (childLevel(parent.level) ?? "weekly") : "long-term");
+  const [f, setF] = useState<Objective>(ex ?? { id: uid(), title: "", description: "", why: "", areaId: parent?.areaId ?? null, level: lvl, parentId: parent?.id ?? null, start: parent ? (parent.start > today ? parent.start : today) : today, target: parent ? parent.target : addDays(today, 365 * (lvl === "long-term" ? 10 : 1)), priority: 2, status: "active", completionCriteria: "", evidenceRequired: false, createdAt: Date.now(), updatedAt: Date.now() });
   const addFile = useAddFileEvidence(); const runAi = useAiRun(); const [aiRun, setAiRun] = useState<AiRun | null>(null); const [aiBusy, setAiBusy] = useState(false); const [aiErr, setAiErr] = useState(""); const [aiOk, setAiOk] = useState<string>("checking");
   useEffect(() => { void aiStatus(db, settings).then((s) => setAiOk(s.ready ? "" : s.why)); }, [db, settings]);
   const [newArea, setNewArea] = useState(""); const [taskOpen, setTaskOpen] = useState(false); const [proof, setProof] = useState(""); const [krForm, setKrForm] = useState(false);

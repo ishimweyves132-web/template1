@@ -1,7 +1,7 @@
 // The assistant's hands. Each tool validates its arguments, then returns the records to write (or an error the model can read and fix).
 // There is no approval step: the owner chose an autonomous assistant. Safety comes from exact record-level undo (see agentRunner), not from refusing.
 import { addDays, diffDays, isDateStr, minToHM, type DateStr } from "../lib/dates";
-import { LEVELS, childLevel, occId, uid, type Area, type Commitment, type Evidence, type Habit, type HabitLog, type KeyResult, type KrPoint, type Level, type Objective, type Occurrence, type Review, type Rules, type Session, type Task, type Vision, type ObjStatus, type Execution, type Change, type Settings } from "../lib/model";
+import { LEVELS, LONG_TERM_DAYS, migrateLevel, childLevel, occId, uid, type Area, type Commitment, type Evidence, type Habit, type HabitLog, type KeyResult, type KrPoint, type Level, type Objective, type Occurrence, type Review, type Rules, type Session, type Task, type Vision, type ObjStatus, type Execution, type Change, type Settings } from "../lib/model";
 import { approvePlacements, completeOccurrence, missingOccurrences, unscheduleSession } from "./ops";
 import { proposeSchedule, violation, type Context } from "./scheduler";
 
@@ -24,12 +24,14 @@ const DATE = "YYYY-MM-DD"; const MIN = "minutes after midnight (e.g. 540 = 09:00
 const REC = obj({ kind: E(["daily", "weekdays", "weekly", "monthly"], "how often"), days: DAYS("for weekly: 0=Mon … 6=Sun"), until: S(`${DATE} last day`), startDate: S(`${DATE} first day`) }, ["kind"]);
 
 export const TOOLS: ToolDecl[] = [
-  { name: "set_vision", description: "Write or replace the user's life vision.", parameters: obj({ statement: S("the vision"), why: S("why it matters"), horizonYears: N("planning horizon in years, default 4") }, ["statement"]) },
-  { name: "create_objective", description: "Create a goal/objective. With parentId the level is set automatically to the next level down. Without a parent, give a level (normally four-year).", parameters: obj({ title: S("a clear, measurable outcome"), level: E([...LEVELS], "four-year, annual, quarterly, monthly or weekly"), parentId: S("id of the parent objective"), why: S("motivation"), start: S(DATE), target: S(`${DATE} target date`), priority: N("1 (highest) to 4"), status: E(["draft", "active", "paused"], "default active"), areaName: S("life area name, created if new"), completionCriteria: S("what must be true for it to count as achieved"), evidenceRequired: B("require evidence") }, ["title"]) },
+  { name: "set_vision", description: "Write or replace the user's life vision.", parameters: obj({ statement: S("the vision"), why: S("why it matters"), horizonYears: N("how far ahead the vision looks, in years (1-50), default 10") }, ["statement"]) },
+  { name: "create_objective", description: "Create a goal/objective. With parentId the level is set automatically to the next level down. Without a parent, give a level (normally long-term, with a target date that fits the goal).", parameters: obj({ title: S("a clear, measurable outcome"), level: E([...LEVELS], "long-term (any span: 5, 10, 20 years…), annual, quarterly, monthly or weekly"), parentId: S("id of the parent objective"), why: S("motivation"), start: S(DATE), target: S(`${DATE} target date`), priority: N("1 (highest) to 4"), status: E(["draft", "active", "paused"], "default active"), areaName: S("life area name, created if new"), completionCriteria: S("what must be true for it to count as achieved"), evidenceRequired: B("require evidence") }, ["title"]) },
   { name: "update_objective", description: "Change fields of an existing objective (including status: completed, partial, paused, cancelled, archived).", parameters: obj({ id: S("objective id"), title: S("new title"), why: S("motivation"), description: S("details"), start: S(DATE), target: S(DATE), priority: N("1-4"), status: E(["draft", "active", "paused", "completed", "partial", "cancelled", "archived"], "new status"), completionCriteria: S("done-when"), evidenceRequired: B("require evidence"), areaName: S("life area") }, ["id"]) },
   { name: "archive_objective", description: "Archive an objective and, by default, everything beneath it (hidden, fully reversible by undo).", parameters: obj({ id: S("objective id"), includeChildren: B("default true") }, ["id"]) },
   { name: "create_key_result", description: "Add a measurable key result to an objective. Progress is measured from these.", parameters: obj({ objectiveId: S("objective id"), title: S("what is measured"), type: E(["numeric", "percent", "currency", "count", "binary"], "kind of measure"), direction: E(["up", "down"], "up if higher is better"), baseline: N("starting value"), target: N("goal value"), unit: S("unit, e.g. kg or words") }, ["objectiveId", "title"]) },
   { name: "update_key_result", description: "Change a key result's title, target, baseline, unit or direction.", parameters: obj({ id: S("key result id"), title: S("title"), baseline: N("start"), target: N("goal"), unit: S("unit"), direction: E(["up", "down"], "direction") }, ["id"]) },
+  { name: "delete_key_result", description: "Remove a key result that was added by mistake or no longer measures anything, with its recorded values. Undo restores it.", parameters: obj({ id: S("key result id") }, ["id"]) },
+  { name: "archive_habit", description: "Stop tracking a habit (its history is kept).", parameters: obj({ habitId: S("habit id") }, ["habitId"]) },
   { name: "record_measurement", description: "Record a new measured value for a key result.", parameters: obj({ keyResultId: S("key result id"), value: N("the new value"), date: S(DATE), note: S("note") }, ["keyResultId", "value"]) },
   { name: "create_task", description: "Create a task. One-off tasks get onDate (default today). Repeating tasks use recurrence.", parameters: obj({ title: S("specific next action"), objectiveId: S("objective it serves"), estimateMin: N("5-480"), priority: N("1-4"), onDate: S(DATE), deadline: S(DATE), preferred: E(["any", "morning", "afternoon", "evening"], "time of day"), energy: E(["low", "medium", "high"], "energy needed"), notes: S("notes"), protectedTask: B("never auto-moved"), recurrence: REC, inbox: B("true = no date yet") }, ["title"]) },
   { name: "update_task", description: "Change an existing task. Changing onDate moves its planned occurrence.", parameters: obj({ id: S("task id"), title: S("title"), notes: S("notes"), objectiveId: S("objective id"), estimateMin: N("minutes"), priority: N("1-4"), onDate: S(DATE), deadline: S(DATE), preferred: E(["any", "morning", "afternoon", "evening"], "time of day"), energy: E(["low", "medium", "high"], "energy"), protectedTask: B("never auto-moved") }, ["id"]) },
@@ -67,17 +69,17 @@ export function runTool(name: string, a: Args, env: ToolEnv): ToolOutcome {
   const ensureOcc = (t: Task, date: DateStr): Occurrence => { const id = occId(t.id, date); const ex = data.occurrences.find((o) => o.id === id) ?? (put.occurrences as Occurrence[] | undefined)?.find((o) => o.id === id); if (ex) return ex; const o: Occurrence = { id, taskId: t.id, date, status: "planned", moves: 0, createdAt: now }; (put.occurrences ??= []).push(o); return o; };
   switch (name) {
     case "set_vision": {
-      const st = str(a, "statement", 600), why = str(a, "why", 600), y = num(a, "horizonYears", 1, 10, true); const e = firstError(st, why, y); if (e) return err(e); if (!st) return err("statement is required");
-      const old = data.vision[0]; put.vision = [{ id: "vision", statement: st as string, why: (why as string | undefined) ?? old?.why ?? "", horizonStart: old?.horizonStart ?? today, horizonYears: (y as number | undefined) ?? old?.horizonYears ?? 4, updatedAt: now } satisfies Vision];
+      const st = str(a, "statement", 600), why = str(a, "why", 600), y = num(a, "horizonYears", 1, 50, true); const e = firstError(st, why, y); if (e) return err(e); if (!st) return err("statement is required");
+      const old = data.vision[0]; put.vision = [{ id: "vision", statement: st as string, why: (why as string | undefined) ?? old?.why ?? "", horizonStart: old?.horizonStart ?? today, horizonYears: (y as number | undefined) ?? old?.horizonYears ?? 10, updatedAt: now } satisfies Vision];
       return finish("Vision updated");
     }
     case "create_objective": {
       const title = str(a, "title", 140), why = str(a, "why", 400), cc = str(a, "completionCriteria", 400), area = str(a, "areaName", 60), start = dte(a, "start"), target = dte(a, "target"), pr = num(a, "priority", 1, 4, true);
       const e = firstError(title, why, cc, area, start, target, pr); if (e) return err(e); if (!title) return err("title is required");
       const parent = has(a, "parentId") ? one(data.objectives, a.parentId) : undefined; if (has(a, "parentId") && !parent) return err(`parentId ${String(a.parentId)} does not exist`);
-      let level: Level; if (parent) { const c = childLevel(parent.level); if (!c) return err("a weekly commitment cannot have sub-objectives"); level = c; } else { if (!(LEVELS as readonly string[]).includes(String(a.level))) return err(`level is required without a parent: one of ${LEVELS.join(", ")}`); level = a.level as Level; }
+      let level: Level; if (parent) { const c = childLevel(parent.level); if (!c) return err("a weekly commitment cannot have sub-objectives"); level = c; } else { if (!(LEVELS as readonly string[]).includes(String(a.level)) && !["four-year", "ten-year", "lifetime"].includes(String(a.level))) return err(`level is required without a parent: one of ${LEVELS.join(", ")}`); level = migrateLevel(String(a.level)); }
       const s = (start as DateStr | undefined) ?? (parent && parent.start > today ? parent.start : today);
-      const t = (target as DateStr | undefined) ?? parent?.target ?? addDays(s, level === "four-year" ? 365 * 4 : level === "annual" ? 365 : level === "quarterly" ? 90 : level === "monthly" ? 30 : 7);
+      const t = (target as DateStr | undefined) ?? parent?.target ?? addDays(s, level === "long-term" ? LONG_TERM_DAYS : level === "annual" ? 365 : level === "quarterly" ? 90 : level === "monthly" ? 30 : 7);
       if (t <= s) return err(`target (${t}) must be after start (${s})`);
       const status = (["draft", "active", "paused"].includes(String(a.status)) ? a.status : "active") as ObjStatus;
       const o: Objective = { id: uid(), title: title as string, description: "", why: (why as string | undefined) ?? "", areaId: areaFor(area as string | undefined) ?? parent?.areaId ?? null, level, parentId: parent?.id ?? null, start: s, target: t, priority: ((pr as number | undefined) ?? parent?.priority ?? 2) as 1 | 2 | 3 | 4, status, completionCriteria: (cc as string | undefined) ?? "", evidenceRequired: a.evidenceRequired === true, createdAt: now, updatedAt: now };
@@ -113,6 +115,14 @@ export function runTool(name: string, a: Args, env: ToolEnv): ToolOutcome {
       const n: KeyResult = { ...k, ...(title ? { title: title as string } : {}), ...(unit !== undefined ? { unit: unit as string } : {}), ...(b !== undefined ? { baseline: b as number } : {}), ...(t !== undefined ? { target: t as number } : {}), ...(a.direction === "up" || a.direction === "down" ? { direction: a.direction } : {}) };
       if (n.type !== "binary" && (n.direction === "up" ? n.target - n.baseline : n.baseline - n.target) <= 0) return err("the target must be beyond the baseline in the stated direction");
       put.krs = [n]; return finish(`Updated key result “${n.title}”`, { id: n.id });
+    }
+    case "delete_key_result": {
+      const k = one(data.krs, a.id); if (!k) return err(`key result ${String(a.id)} does not exist`);
+      writes.del = { krs: [k.id], krPoints: data.krPoints.filter((p) => p.krId === k.id).map((p) => p.id) }; return finish(`Removed key result “${k.title}”`);
+    }
+    case "archive_habit": {
+      const h = one(data.habits, a.habitId); if (!h) return err(`habit ${String(a.habitId)} does not exist`);
+      put.habits = [{ ...h, archived: true }]; return finish(`Stopped tracking “${h.title}”`);
     }
     case "record_measurement": {
       const k = one(data.krs, a.keyResultId); if (!k) return err(`keyResultId ${String(a.keyResultId)} does not exist`);

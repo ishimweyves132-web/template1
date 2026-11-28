@@ -9,9 +9,9 @@ export function demoData(today: DateStr, now = Date.now()): DemoData {
   const area = (name: string): Area => ({ id: uid(), name, createdAt: now });
   const areas = [area("Career & craft"), area("Health"), area("Finances"), area("Learning")];
   const obj = (p: Partial<Objective> & Pick<Objective, "title" | "level">): Objective => ({ id: uid(), description: "", why: "", areaId: null, parentId: null, start: y0, target: y4, priority: 2, status: "active", completionCriteria: "", evidenceRequired: false, createdAt: now, updatedAt: now, ...p });
-  const g1 = obj({ title: "Become a published author", level: "four-year", areaId: areas[0]!.id, why: "I want my ideas to outlast my working years.", completionCriteria: "A book is published and sold to real readers." });
-  const g2 = obj({ title: "Be physically strong at 40", level: "four-year", areaId: areas[1]!.id, why: "Energy is the base of everything else.", priority: 1 });
-  const g3 = obj({ title: "Build 12 months of savings", level: "four-year", areaId: areas[2]!.id, evidenceRequired: true });
+  const g1 = obj({ title: "Become a published author", level: "long-term", areaId: areas[0]!.id, why: "I want my ideas to outlast my working years.", completionCriteria: "A book is published and sold to real readers." });
+  const g2 = obj({ title: "Be physically strong at 40", level: "long-term", areaId: areas[1]!.id, why: "Energy is the base of everything else.", priority: 1 });
+  const g3 = obj({ title: "Build 12 months of savings", level: "long-term", areaId: areas[2]!.id, evidenceRequired: true });
   const a1 = obj({ title: "Finish the first draft", level: "annual", parentId: g1.id, areaId: areas[0]!.id, target: addDays(today, 300) });
   const a2 = obj({ title: "Run a half marathon", level: "annual", parentId: g2.id, areaId: areas[1]!.id, target: addDays(today, 280) });
   const a3 = obj({ title: "Save the first 4 months", level: "annual", parentId: g3.id, areaId: areas[2]!.id, target: addDays(today, 330), evidenceRequired: true });

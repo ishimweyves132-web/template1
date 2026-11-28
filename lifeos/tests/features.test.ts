@@ -115,7 +115,7 @@ const guard = (objectives: Objective[]): GuardContext => ({ ctx: { rules: defaul
 describe("AI sub-objective suggestions stay inside their parent", () => {
   const op = (p: Record<string, unknown> = {}) => ({ op: "propose_objective", parentId: "p", title: "Pass the exam", why: "needed", start: "2026-12-01", target: "2026-12-30", ...p });
   it("accepts a valid one, forcing the correct child level (the model cannot pick it)", () => {
-    const v = validateAi({ operations: [op({ level: "four-year" })] }, guard([obj({})])); expect(v.rejected).toEqual([]); expect(v.accepted[0]).toMatchObject({ op: "propose_objective", level: "quarterly", parentId: "p" });
+    const v = validateAi({ operations: [op({ level: "long-term" })] }, guard([obj({})])); expect(v.rejected).toEqual([]); expect(v.accepted[0]).toMatchObject({ op: "propose_objective", level: "quarterly", parentId: "p" });
   });
   it("rejects unknown/cancelled parents, dates outside the parent window, bad dates, duplicates, and levels with nothing below", () => {
     const g = guard([obj({}), obj({ id: "x", status: "cancelled" }), obj({ id: "w", level: "weekly" }), obj({ id: "k", parentId: "p", title: "Pass the exam", level: "quarterly" })]);

@@ -26,6 +26,16 @@ Your data stays on the device you use. Use Settings → Export backup to move it
 
 **Fixed Android signing key (optional):** add the repository secrets `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (and optionally `ANDROID_KEY_PASSWORD`); builds then install over each other with data kept.
 
+## Tell LifeOS, it does the rest
+Today opens with one box: **Tell LifeOS**. Type or speak (🎙, where your browser supports speech) anything, in one sentence or a whole paragraph. Examples:
+- *"I want to speak French at B2 in two years, run a 10 km race by spring, and read 20 minutes every evening."*
+- *"Next month I'm moving house. Keep my training going and plan around it."*
+- *"I finished my 5 km run and read 30 pages."*
+
+The assistant turns that into the right goals at the right horizons, measurable key results, repeating tasks, habits and a calendar for the coming weeks, and it records what you report doing. **Plan it for me** places any unscheduled work for today. Every request shows what it changed, with an **Undo this request** button.
+
+Horizons are not fixed: a long-term goal can end in 2, 5, 10 or 20 years. Older four-year goals are converted automatically.
+
 ## The assistant
 Assistant tab: you talk to it in plain words and it **does the work itself**. It receives your complete data (goals, key results, tasks, calendar, sessions, habits, history, evidence text, rules) and has tools to create/edit/archive objectives, key results and measurements, tasks (incl. repeating), schedule/unschedule sessions, plan a whole period with the deterministic scheduler, add commitments, log habits, record completion, save reviews and adjust scheduling rules. There is no approval step. Safety instead comes from: strict validation of every tool call (bad calls are returned to the model to fix), nothing is ever deleted (cancel/archive only), a cap of 8 rounds / 40 actions per request, and an **Undo this request** button that restores every touched record exactly. It needs your Gemini key and an explicit consent switch (Settings or the Assistant tab). Attached files are never sent.
 
@@ -39,6 +49,7 @@ Assistant tab: you talk to it in plain words and it **does the work itself**. It
 | 5 Intelligence | rule-based coach; optional AI gateway whose answers are validated before anything can change | built and tested (the AI path only against a mock gateway) |
 | 6 Reliability | offline service worker, safety copies, accessibility checks, light/dark, responsive layouts | built and tested |
 | 7 Attachments, Gemini, in-app calendar | evidence files stored on the device (optional in backups); your own Gemini API key pasted in Settings (encrypted on the device, never in backups); AI can suggest tasks, schedules and sub-goals (all validated, drafts need your approval); edit/delete commitments, move or unschedule sessions, conflict warnings | built and tested (Gemini only against a mocked API) |
+| 9 Tell-LifeOS capture, any horizon | one capture box on Today with speech input; the assistant infers details, sets long-term goals (any span), breaks them down to weekly steps, records reported activity; delete wrong key results and stop habits (undoable) | built and tested with a stand-in model; not run against live Gemini |
 | 8 Autonomous assistant, native apps | assistant with tool calling that acts directly + exact undo; Android APK (real notifications with the app closed, share-sheet backups); Windows and Linux desktop apps; one release workflow | built; see limits below |
 | Not built | Google Calendar API / device-calendar sync, encrypted cloud backup, multi-time-zone travel | planned |
 

@@ -124,7 +124,7 @@ const idb = (page, fn, arg) => page.evaluate(([src, a]) => new Promise((res, rej
       { op: "delete_objective", id: "x" }, { op: "change_deadline", id: "x", value: "2030-01-01" }, { op: "advice", text: "Protect your mornings." },
       { op: "propose_schedule", taskId: t0[1], occId: t0[0], date: addD(1), startMin: 5 * 60, endMin: 6 * 60, why: "too early" }, { op: "propose_task", title: "Book the DELF exam", estimateMin: 20, objectiveId: null, priority: 2, onDate: addD(1), why: "needed" } ] }) }); });
     await nav(page, "#/coach"); await page.getByRole("button", { name: "Ask for a weekly plan" }).click(); await has(page, "Validated suggestions"); await has(page, "3 rejected");
-    const t = await page.locator("main").innerText(); ok(/not permitted to delete objective/.test(t) && /not permitted to change deadline/.test(t) && /outside working hours/.test(t), "rejections explained: " + t.slice(0, 700));
+    const t = await page.locator("main").innerText(); ok(/not permitted to delete objective/.test(t) && /not permitted to change deadline/.test(t) && /outside working hours|not an allowed working day/.test(t), "rejections explained: " + t.slice(0, 700));
     ok(!/notes|evidence|description/i.test(sent) && sent.includes("allowedOperations"), "request is minimal"); ok(!sent.includes("Dentist") && !sent.includes("Board meeting"), "no calendar event titles sent");
     const before = await idb(page, (db) => new Promise((res) => { const r = db.transaction("tasks").objectStore("tasks").getAll(); r.onsuccess = () => res(r.result.length); }));
     await page.getByRole("button", { name: /^Approve \d+ selected/ }).click(); await page.waitForTimeout(300);
@@ -185,12 +185,12 @@ const idb = (page, fn, arg) => page.evaluate(([src, a]) => new Promise((res, rej
     const bk = await idb(page, async () => 1); void bk; await nav(page, "#/settings"); const [bdl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export backup" }).click()]); const bp = path.join(out, "with-key.json"); await bdl.saveAs(bp);
     const btxt = fs.readFileSync(bp, "utf8"); ok(!btxt.includes(KEY) && !btxt.includes("aiKey") && !btxt.includes("deviceKey"), "backup contains no key material");
     // autonomous assistant: consent gate, full data sent, tools executed WITHOUT approval, partial failure reported, exact undo
-    await nav(page, "#/coach"); await has(page, "Set up your assistant"); ok(!(await page.locator("main").innerText()).includes("Send"), "no chat before consent");
-    await page.getByLabel(/I understand that while I use the assistant/).click(); await has(page, "Ask or tell your assistant");
+    await nav(page, "#/coach"); await has(page, "Turn on the assistant"); ok(!(await page.locator("main").innerText()).includes("Send"), "no chat before consent");
+    await page.getByLabel(/I understand that while I use the assistant/).click(); await has(page, "Tell or ask your assistant");
     const cnt = () => 0;
     const names = () => idb(page, (db) => new Promise((res) => { const r = db.transaction("tasks").objectStore("tasks").getAll(); r.onsuccess = () => res(r.result.map((t) => t.title)); }));
     const tasksBefore = await names(); const objsBefore = await idb(page, (db) => new Promise((res) => { const r = db.transaction("objectives").objectStore("objectives").getAll(); r.onsuccess = () => res(r.result.length); }));
-    await page.getByLabel("Ask or tell your assistant").fill("Add a goal to read 12 books and a task for today"); await page.getByRole("button", { name: "Send" }).click(); await has(page, "I added the goal and a task for today");
+    await page.getByLabel("Tell or ask your assistant").fill("Add a goal to read 12 books and a task for today"); await page.getByRole("button", { name: "Send" }).click(); await has(page, "I added the goal and a task for today");
     const t2 = await names(); ok(t2.includes("Read 20 pages") && !t2.includes("Bad one") && t2.length === tasksBefore.length + 1, "task created directly, invalid call rejected: " + JSON.stringify(t2));
     const objs2 = await idb(page, (db) => new Promise((res) => { const r = db.transaction("objectives").objectStore("objectives").getAll(); r.onsuccess = () => res(r.result.filter((o) => o.title === "Read 12 books").map((o) => [o.level, o.status])); })); eq(objs2, [["annual", "active"]], "objective created active, no approval step");
     const atxt = await page.locator("main").innerText(); ok(/2 changes, 1 failed/.test(atxt) && /estimateMin/.test(atxt), "partial failure shown honestly: " + atxt.slice(-500));

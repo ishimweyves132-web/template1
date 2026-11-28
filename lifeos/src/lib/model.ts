@@ -3,9 +3,13 @@ import type { DateStr } from "./dates";
 export const uid = (): string => globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 // ---------- planning hierarchy ----------
-export const LEVELS = ["four-year", "annual", "quarterly", "monthly", "weekly"] as const;
+export const LEVELS = ["long-term", "annual", "quarterly", "monthly", "weekly"] as const;
+/** Older data used a fixed "four-year" top level. Any span is allowed now; old records are migrated on load. */
+export const migrateLevel = (l: string): Level => (l === "four-year" || l === "ten-year" || l === "lifetime" ? "long-term" : (LEVELS as readonly string[]).includes(l) ? (l as Level) : "long-term");
+/** Default span for a long-term goal when the user gives no end date. */
+export const LONG_TERM_DAYS = 365 * 10;
 export type Level = (typeof LEVELS)[number];
-export const LEVEL_LABEL: Record<Level, string> = { "four-year": "Four-year goal", annual: "Annual objective", quarterly: "Quarterly objective", monthly: "Monthly milestone", weekly: "Weekly commitment" };
+export const LEVEL_LABEL: Record<Level, string> = { "long-term": "Long-term goal", annual: "Annual objective", quarterly: "Quarterly objective", monthly: "Monthly milestone", weekly: "Weekly commitment" };
 export const childLevel = (l: Level): Level | null => LEVELS[LEVELS.indexOf(l) + 1] ?? null;
 
 export type ObjStatus = "draft" | "active" | "paused" | "completed" | "partial" | "cancelled" | "archived";

@@ -45,8 +45,8 @@ describe("objective outcome and pace", () => {
     expect(pace(o, { fraction: null, measured: 0, total: 0 }, "2026-01-06")).toBe("unmeasured");
     expect(pace(o, { fraction: 0.1, measured: 1, total: 1 }, "2025-12-01")).toBe("not-started");
   });
-  it("trail climbs from a task's objective to the four-year goal", () => {
-    const g = obj({ id: "g", level: "four-year" }), a = obj({ id: "a", parentId: "g" }), q = obj({ id: "q", parentId: "a", level: "quarterly" });
+  it("trail climbs from a task's objective to the long-term goal", () => {
+    const g = obj({ id: "g", level: "long-term" }), a = obj({ id: "a", parentId: "g" }), q = obj({ id: "q", parentId: "a", level: "quarterly" });
     expect(trail(q, [g, a, q]).map((o) => o.id)).toEqual(["g", "a", "q"]);
   });
 });

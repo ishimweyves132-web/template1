@@ -7,9 +7,17 @@ import { habitDueToday, habitStats } from "../domain/evaluation";
 import { uid, type Occurrence, type Task } from "../lib/model";
 import { missingOccurrences } from "../domain/ops";
 import type { Recovery } from "../domain/reschedule";
+import { Capture, useAssistant } from "./Assistant";
 
 const greeting = (d = new Date()) => (d.getHours() < 12 ? "Good morning" : d.getHours() < 18 ? "Good afternoon" : "Good evening");
 function Clock({ since }: { since: number }) { const [, t] = useState(0); useEffect(() => { const i = setInterval(() => t((n) => n + 1), 1000); return () => clearInterval(i); }, []); const s = Math.floor((Date.now() - since) / 1000); return <span className="clock">{String(Math.floor(s / 3600)).padStart(2, "0")}:{String(Math.floor(s / 60) % 60).padStart(2, "0")}:{String(s % 60).padStart(2, "0")}</span>; }
+
+/** One tap: the assistant places today's unscheduled work itself (it can still be undone). */
+function PlanDay() {
+  const a = useAssistant(); const [busy, setBusy] = useState(false);
+  if (!a.ready) return null;
+  return <button className="btn primary small" disabled={busy || a.busy} onClick={async () => { setBusy(true); await a.send("Plan my day: give every open task today a sensible time within my rules and around my calendar."); setBusy(false); }}>{busy || a.busy ? "Planning…" : "Plan it for me"}</button>;
+}
 
 export function Today() {
   const { today, occurrences, tasks, sessions, commitments, objectives, habits, habitLogs, toggleHabitOn, focus, startFocus, stopFocus, recover, commit, notify, reviews, loadDemo, vision, complete, executions } = useApp();
@@ -39,10 +47,12 @@ export function Today() {
     <div>
       <PageHead title={greeting()} sub={formatDate(today, { weekday: "long", day: "numeric", month: "long" })} right={<button className="btn small" onClick={() => setTaskOpen(true)}>＋ Task</button>} />
       {focus && fo && <div className="focusbar" role="timer"><div className="grow"><div className="small">Focus · {taskOf(fo)?.title}</div><Clock since={focus.startedAt} /></div><button className="btn" onClick={() => setDone({ occId: focus.occId, minutes: Math.max(1, Math.round((Date.now() - focus.startedAt) / 60000)), startTs: focus.startedAt })}>Finish</button><button className="btn" onClick={() => confirm("Stop the timer without recording?") && stopFocus()}>Discard</button></div>}
+      <Capture onOpenChat={() => { location.hash = "#/coach"; }} />
       {objectives.length === 0 && tasks.length === 0 && (
-        <Card className="hero"><p className="big">Welcome to LifeOS.</p><p className="muted">Start by describing the life you want, then break it into measurable goals and daily actions. Or look around first with an example plan.</p>
-          <div className="row wrap"><a className="btn primary" href="#/vision">Define your vision</a><button className="btn" onClick={loadDemo}>Load an example plan</button></div></Card>
+        <Card className="hero"><p className="big">Welcome to LifeOS.</p><p className="muted">Tell LifeOS what you want above, in one sentence or a whole paragraph: goals at any horizon, habits, a routine. It turns that into a plan you can change or undo. Prefer to look around first? Load an example plan.</p>
+          <div className="row wrap"><button className="btn" onClick={loadDemo}>Load an example plan</button><a className="btn ghost" href="#/vision">Write my vision by hand</a></div></Card>
       )}
+      {unsched.length > 0 && <div className="insight note" role="status" style={{ margin: "0 0 16px" }}><div className="row wrap" style={{ gap: 10 }}><span className="grow"><b>{unsched.length} task{unsched.length === 1 ? "" : "s"} still without a time today.</b><br /><span className="small muted">Let LifeOS place them around your calendar and rules.</span></span><PlanDay /></div></div>}
       <div className="cols">
         <div>
           <Card title="Today">

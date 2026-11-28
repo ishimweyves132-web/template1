@@ -186,3 +186,49 @@ describe("regression found by the live LLM run", () => {
     expect(JSON.parse(buildFullContext(a.data, a.settings, TODAY, 480)).calendar).toHaveLength(0);
   });
 });
+
+import { migrateLevel, LONG_TERM_DAYS } from "../src/lib/model";
+describe("any time horizon (not fixed at four years)", () => {
+  it("old four-year records migrate to long-term; unknown levels become long-term", () => {
+    expect(migrateLevel("four-year")).toBe("long-term"); expect(migrateLevel("ten-year")).toBe("long-term"); expect(migrateLevel("lifetime")).toBe("long-term");
+    expect(migrateLevel("annual")).toBe("annual"); expect(migrateLevel("nonsense")).toBe("long-term");
+  });
+  it("a long-term goal defaults to ten years, and an explicit target can be 20 years or 5 years", async () => {
+    const a = app();
+    const ten = await apply(a, "create_objective", { title: "Speak French at B2", level: "long-term", start: TODAY });
+    expect(a.data.objectives[0]!.level).toBe("long-term"); expect(diffDaysSafe(TODAY, a.data.objectives[0]!.target)).toBeGreaterThanOrEqual(LONG_TERM_DAYS - 2);
+    expect("error" in ten).toBe(false);
+    const twenty = await apply(a, "create_objective", { title: "Build a company", level: "long-term", start: TODAY, target: "2046-11-24" });
+    expect(a.data.objectives.find((o) => o.id === twenty.result.id)!.target).toBe("2046-11-24");
+    const five = await apply(a, "create_objective", { title: "Run a marathon", level: "long-term", start: TODAY, target: "2031-11-24" });
+    expect(five.result.target).toBe("2031-11-24");
+  });
+  it("legacy level names from older tool calls are accepted and stored as long-term", async () => {
+    const a = app(); const r = await apply(a, "create_objective", { title: "Old habit of thinking", level: "four-year" });
+    expect("error" in r).toBe(false); expect(a.data.objectives[0]!.level).toBe("long-term");
+  });
+  it("the vision can look up to 50 years ahead, not just 10", () => {
+    const a = app(); expect("error" in runTool("set_vision", { statement: "Long life", horizonYears: 30 }, a.env())).toBe(false);
+    expect("error" in runTool("set_vision", { statement: "Long life", horizonYears: 60 }, a.env())).toBe(true);
+  });
+});
+const diffDaysSafe = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getTime()) / 86400000;
+
+describe("the assistant can undo its own mistakes", () => {
+  it("removes a wrong key result (with its values), and stops a habit without losing its history", async () => {
+    const a = app(); const o = await apply(a, "create_objective", { title: "Goal", level: "annual" });
+    const k = await apply(a, "create_key_result", { objectiveId: o.result.id, title: "Placeholder", baseline: 0, target: 1 });
+    await apply(a, "record_measurement", { keyResultId: k.result.id, value: 1 });
+    const del = await apply(a, "delete_key_result", { id: k.result.id }); expect("error" in del).toBe(false);
+    expect(a.data.krs).toHaveLength(0); expect(a.data.krPoints).toHaveLength(0);
+    const h = await apply(a, "create_habit", { title: "Read" }); await apply(a, "log_habit", { habitId: h.result.id });
+    await apply(a, "archive_habit", { habitId: h.result.id }); expect(a.data.habits[0]!.archived).toBe(true); expect(a.data.habitLogs).toHaveLength(1);
+  });
+  it("both deletions can be undone exactly", async () => {
+    const a = app(); const o = await apply(a, "create_objective", { title: "Goal", level: "annual" });
+    const k = await apply(a, "create_key_result", { objectiveId: o.result.id, title: "Keep me", baseline: 0, target: 1 });
+    const before = structuredClone(a.data);
+    const r = await runAgent("remove it", [], a.deps(script([call("delete_key_result", { id: k.result.id })], [{ text: "removed" }]).model));
+    expect(a.data.krs).toHaveLength(0); await undoRun(r.run, a.deps(script([{ text: "" }]).model)); expect(a.data).toEqual(before);
+  });
+});

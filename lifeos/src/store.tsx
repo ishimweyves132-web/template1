@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Db, DATA_STORES, type StoreName } from "./lib/db";
 import { addDays, nowMin, todayStr, type DateStr } from "./lib/dates";
-import { defaultSettings, uid, type AiRun, type ChatMsg, type AiAudit, type Area, type Change, type Commitment, type Evidence, type Execution, type Habit, type HabitLog, type KeyResult, type KrPoint, type Objective, type Occurrence, type Review, type Session, type Settings, type Task, type Vision } from "./lib/model";
+import { defaultSettings, migrateLevel, uid, type AiRun, type ChatMsg, type AiAudit, type Area, type Change, type Commitment, type Evidence, type Execution, type Habit, type HabitLog, type KeyResult, type KrPoint, type Objective, type Occurrence, type Review, type Session, type Settings, type Task, type Vision } from "./lib/model";
 import { approvePlacements, completeOccurrence, missingOccurrences, settleMissed, toggleHabit, type CompleteInput } from "./domain/ops";
 import { recoverMissed, undoChange, type Recovery } from "./domain/reschedule";
 import { proposeSchedule, type Busy, type Context, type Placement, type Unplaced } from "./domain/scheduler";
@@ -39,6 +39,9 @@ export function Provider({ db, children }: { db: Db; children: ReactNode }) {
 
   const reload = useCallback(async () => {
     const d = empty(); for (const s of DATA_STORES) (d as unknown as Record<string, unknown[]>)[s] = await db.getAll(s);
+    // Records from the old fixed "four-year" top level become "long-term" (saved once, so they stay migrated).
+    const legacy = d.objectives.filter((o) => (o.level as string) !== migrateLevel(o.level as string)).map((o) => ["objectives", { ...o, level: migrateLevel(o.level as string) }] as [string, unknown]);
+    if (legacy.length) { await db.write({ put: legacy as never, del: [] }); d.objectives = d.objectives.map((o) => ({ ...o, level: migrateLevel(o.level as string) })); }
     setData(d); setSettingsState(await db.loadSettings()); setFocus((await db.getKv<FocusState>("focus")) ?? null); setLoaded(true);
   }, [db]);
   useEffect(() => { void reload(); }, [reload]);
